@@ -2397,9 +2397,60 @@ def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
         ["Año", "Semana del año"] if "Año" in evol.columns else ["Semana del año"]
     ).reset_index(drop=True)
 
-    # Líneas de referencia del periodo completo visible.
-    mejor_valor = df_tmp[col_mejor].max() if col_mejor and col_mejor in df_tmp.columns else df_tmp[col_pago].max()
-    peor_valor = df_tmp[col_peor].min() if col_peor and col_peor in df_tmp.columns else df_tmp[col_pago].min()
+    if df_tmp.empty:
+        return go.Figure()
+
+    # Asegura numéricos
+    for col in [col_cuota, col_pago, col_mejor, col_peor]:
+        if col and col in df_tmp.columns:
+            df_tmp[col] = pd.to_numeric(df_tmp[col], errors="coerce").fillna(0)
+
+    # Valores de referencia
+    mejor_valor = (
+        df_tmp[col_mejor].max()
+        if col_mejor and col_mejor in df_tmp.columns
+        else df_tmp[col_pago].max()
+    )
+
+    peor_valor = (
+        df_tmp[col_peor].min()
+        if col_peor and col_peor in df_tmp.columns
+        else df_tmp[col_pago].min()
+    )
+
+    # Si Peor Semana viene en 0, no debe forzar la escala al piso.
+    valores_reales = pd.concat([
+        df_tmp[col_cuota],
+        df_tmp[col_pago]
+    ], ignore_index=True)
+
+    valores_reales = valores_reales[
+        valores_reales.notna() & 
+        np.isfinite(valores_reales) & 
+        (valores_reales > 0)
+    ]
+
+    if valores_reales.empty:
+        y_min = 0
+        y_max = 1
+    else:
+        y_min_real = float(valores_reales.min())
+        y_max_real = float(valores_reales.max())
+        rango = y_max_real - y_min_real
+
+        if rango == 0:
+            margen_inf = y_min_real * 0.12
+            margen_sup = y_max_real * 0.18
+        else:
+            margen_inf = rango * 0.25
+            margen_sup = rango * 0.25
+
+        y_min = max(0, y_min_real - margen_inf)
+        y_max = y_max_real + margen_sup
+
+    # Solo incluir la línea de mejor semana en escala si está cerca del rango real
+    if mejor_valor > 0:
+        y_max = max(y_max, mejor_valor * 1.05)
 
     fig = go.Figure()
 
@@ -2446,6 +2497,7 @@ def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
         )
     )
 
+    # La línea peor semana se muestra, pero si vale 0 no se deja que aplaste la escala.
     fig.add_trace(
         go.Scatter(
             x=df_tmp["Etiqueta semana"],
@@ -2461,23 +2513,36 @@ def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
         height=500,
         xaxis_title=None,
         yaxis_title=None,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        margin=dict(t=35, b=85, l=45, r=20),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="left",
+            x=0
+        ),
+        margin=dict(t=45, b=85, l=65, r=25),
         paper_bgcolor="rgba(255,255,255,0)",
         plot_bgcolor="rgba(255,255,255,1)",
         font=dict(color="#082567", size=11),
+        hovermode="x unified",
+        dragmode=False,
         xaxis=dict(
             gridcolor="rgba(148,163,184,0.25)",
             tickangle=-45,
             type="category",
             categoryorder="array",
-            categoryarray=df_tmp["Etiqueta semana"].tolist()
+            categoryarray=df_tmp["Etiqueta semana"].tolist(),
+            fixedrange=True
         ),
-        yaxis=dict(gridcolor="rgba(148,163,184,0.25)")
+        yaxis=dict(
+            gridcolor="rgba(148,163,184,0.25)",
+            range=[y_min, y_max],
+            fixedrange=True,
+            tickformat=",.0f"
+        )
     )
 
     return fig
-
 
 # ============================================================
 # COMENTARIOS
