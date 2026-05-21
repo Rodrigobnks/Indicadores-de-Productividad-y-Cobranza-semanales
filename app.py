@@ -217,6 +217,31 @@ def imagen_a_base64(ruta_imagen: str) -> str:
         return base64.b64encode(f.read()).decode()
 
 
+def imagen_logo_html(nombre_archivo: str, clase_css: str = "unidad-logo") -> str:
+    """
+    Convierte un logo local a HTML base64 para mostrarlo dentro de las tarjetas
+    de la pantalla inicial. El archivo debe estar en la misma carpeta del script.
+    """
+    ruta = ruta_carpeta_script() / nombre_archivo
+
+    if not ruta.exists():
+        return '<div class="unidad-logo-placeholder">🏢</div>'
+
+    logo_base64 = imagen_a_base64(str(ruta))
+
+    extension = ruta.suffix.lower().replace(".", "")
+    if extension in ["jpg", "jpeg"]:
+        mime = "jpeg"
+    elif extension == "png":
+        mime = "png"
+    elif extension == "webp":
+        mime = "webp"
+    else:
+        mime = "png"
+
+    return f'<img class="{clase_css}" src="data:image/{mime};base64,{logo_base64}" />'
+
+
 def aplicar_fondo_pagina(nombre_imagen: str):
     ruta_imagen = buscar_imagen_fondo(nombre_imagen)
 
@@ -550,9 +575,29 @@ st.markdown(
         box-shadow: 0 18px 42px rgba(15, 23, 42, 0.16);
     }
 
-    .unidad-icon {
+    .unidad-logo {
+        width: 240px;
+        height: 100px;
+        object-fit: contain;
+        display: block;
+        margin: 0 auto 12px auto;
+    }
+
+    .unidad-logo-placeholder {
+        width: 240px;
+        height: 100px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        margin: 0 auto 12px auto;
         font-size: 52px;
-        margin-bottom: 8px;
+    }
+
+    .unidad-card {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        align-items: center;
     }
 
     .unidad-name {
@@ -2875,23 +2920,36 @@ if unidades_negocio:
             unsafe_allow_html=True
         )
 
-        iconos_unidad = ["🏢", "📊", "💼", "🌎", "📈", "🧭"]
+        logos_unidad = {
+            "PRESICO": "Logo.jpg",
+            "PRESICO LATAM": "Presico sin fondo LATAM.jpg",
+        }
+
         cols_unidades = st.columns(min(len(unidades_negocio), 4))
 
         for idx, unidad in enumerate(unidades_negocio):
+            unidad_texto = str(unidad).strip()
+            unidad_key = normalizar_texto_tc(unidad_texto)
+            nombre_logo = logos_unidad.get(unidad_key)
+
+            if nombre_logo:
+                logo_html = imagen_logo_html(nombre_logo)
+            else:
+                logo_html = '<div class="unidad-logo-placeholder">🏢</div>'
+
             with cols_unidades[idx % len(cols_unidades)]:
                 st.markdown(
                     f"""
                     <div class="unidad-card">
-                        <div class="unidad-icon">{iconos_unidad[idx % len(iconos_unidad)]}</div>
-                        <div class="unidad-name">{html.escape(str(unidad))}</div>
+                        {logo_html}
+                        <div class="unidad-name">{html.escape(unidad_texto)}</div>
                         <div class="unidad-help">Entrar al tablero</div>
                     </div>
                     """,
                     unsafe_allow_html=True
                 )
-                if st.button(f"Entrar a {unidad}", key=f"btn_unidad_{idx}", use_container_width=True):
-                    st.session_state["unidad_negocio_app"] = str(unidad)
+                if st.button(f"Entrar a {unidad_texto}", key=f"btn_unidad_{idx}", use_container_width=True):
+                    st.session_state["unidad_negocio_app"] = unidad_texto
                     st.rerun()
 
         st.stop()
