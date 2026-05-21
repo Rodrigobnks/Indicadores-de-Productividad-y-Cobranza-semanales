@@ -3075,6 +3075,170 @@ def _detectar_nivel_en_pregunta(pregunta: str, df_base: pd.DataFrame):
     return next((c for c in ["Marca", "Ruta", "Sucursal", "Zona"] if c in df_base.columns), None)
 
 
+def _detectar_valores_estructura_en_pregunta(pregunta: str, df_base: pd.DataFrame):
+    """
+    Detecta valores escritos en la pregunta, por ejemplo:
+    - PISTIYO -> Marca o Unidad de Negocio
+    - GUATEMALA -> País
+    - una ruta/sucursal/zona específica
+
+    Esto evita que el chat conteste con el total filtrado cuando el usuario
+    menciona una estructura concreta.
+    """
+    if df_base is None or df_base.empty:
+        return {}
+
+    pregunta_norm = _normalizar_chat_texto(pregunta)
+    columnas_busqueda = [
+        "Unidad de Negocio",
+        "Marca",
+        "País",
+        "Region",
+        "Subdireccion",
+        "Zona",
+        "Sucursal",
+        "Ruta",
+    ]
+
+    encontrados = {}
+
+    for col in columnas_busqueda:
+        if col not in df_base.columns:
+            continue
+
+        valores = (
+            df_base[col]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .unique()
+            .tolist()
+        )
+
+        # Primero los textos largos para evitar que una coincidencia corta bloquee una más específica.
+        valores = sorted(valores, key=lambda x: len(str(x)), reverse=True)
+
+        for valor in valores:
+            valor_norm = _normalizar_chat_texto(valor)
+            if not valor_norm:
+                continue
+
+            # Coincidencia exacta contenida en la pregunta.
+            if valor_norm in pregunta_norm:
+                encontrados.setdefault(col, [])
+                if valor not in encontrados[col]:
+                    encontrados[col].append(valor)
+
+    return encontrados
+
+
+def _aplicar_filtros_detectados_chat(df_base: pd.DataFrame, filtros_detectados: dict):
+    df_tmp = df_base.copy()
+
+    for col, valores in filtros_detectados.items():
+        if col in df_tmp.columns and valores:
+            valores_norm = {_normalizar_chat_texto(v) for v in valores}
+            df_tmp = df_tmp[
+                df_tmp[col]
+                .astype(str)
+                .apply(lambda x: _normalizar_chat_texto(x) in valores_norm)
+            ]
+
+    return df_tmp
+
+
+def _texto_filtros_detectados_chat(filtros_detectados: dict):
+    partes = []
+    for col, valores in filtros_detectados.items():
+        if valores:
+            partes.append(f"{col}: {', '.join(map(str, valores))}")
+    return " | ".join(partes) if partes else "filtros actuales"
+
+
+def _es_pregunta_resumen_chat(pregunta: str):
+    pregunta_norm = _normalizar_chat_texto(pregunta)
+    frases = [
+        "como le fue",
+        "cómo le fue",
+        "como va",
+        "cómo va",
+        "resumen",
+        "evaluacion",
+        "evaluación",
+        "desempeno",
+        "desempeño",
+        "resultado",
+        "resultados",
+    ]
+    return any(_normalizar_chat_texto(f) in pregunta_norm for f in frases)
+
+
+def _resumen_general_chat(
+    df_semana: pd.DataFrame,
+    indicadores_base: list[str],
+    semana_objetivo: int,
+    nombre_base: str,
+    modo_moneda: str,
+    filtros_detectados: dict,
+):
+    if df_semana is None or df_semana.empty:
+        detalle = _texto_filtros_detectados_chat(filtros_detectados)
+        return f"No encontré registros para **{detalle}** en la semana **{semana_objetivo}** con los filtros actuales del tablero."
+
+    detalle = _texto_filtros_detectados_chat(filtros_detectados)
+
+    preferidos = [
+        "Clientes Totales",
+        "Clientes al corriente",
+        "Faltas",
+        "Nunca Abonados",
+        "Cartera Total",
+        "Saldo Cartera",
+        "Saldo en atraso",
+        "Cuota Total Cobranza",
+        "Recuperación semana",
+        "% de Cumplimiento",
+    ]
+
+    disponibles = []
+    for col in preferidos:
+        for real in indicadores_base:
+            if _normalizar_chat_texto(real) == _normalizar_chat_texto(col) and real in df_semana.columns:
+                if real not in disponibles:
+                    disponibles.append(real)
+
+    if not disponibles:
+        disponibles = [c for c in indicadores_base if c in df_semana.columns][:6]
+
+    lineas = [
+        f"Resumen de **{nombre_base}** para **{detalle}** en la semana **{semana_objetivo}**:"
+    ]
+
+    for col in disponibles[:8]:
+        if "cumplimiento" in _normalizar_chat_texto(col) or str(col).strip().startswith("%"):
+            # Si hay filas de cumplimiento, se muestra promedio simple del nivel disponible.
+            valor = pd.to_numeric(df_semana[col], errors="coerce").mean()
+        else:
+            valor = pd.to_numeric(df_semana[col], errors="coerce").sum()
+
+        lineas.append(f"- **{col}**: {_formatear_valor_chat(col, valor, modo_moneda)}")
+
+    if "País" in df_semana.columns and len(df_semana["País"].dropna().astype(str).unique()) > 1:
+        indicador_rank = next((c for c in ["Clientes al corriente", "Recuperación semana", "% de Cumplimiento"] if c in df_semana.columns), disponibles[0] if disponibles else None)
+        if indicador_rank:
+            tabla_pais = df_semana.groupby("País", dropna=False)[indicador_rank].sum(numeric_only=True).reset_index()
+            if not tabla_pais.empty:
+                mayor = tabla_pais.sort_values(indicador_rank, ascending=False).iloc[0]
+                menor = tabla_pais.sort_values(indicador_rank, ascending=True).iloc[0]
+                lineas.append(
+                    f"\nPor país, el mayor registro en **{indicador_rank}** es **{mayor['País']}** "
+                    f"con **{_formatear_valor_chat(indicador_rank, mayor[indicador_rank], modo_moneda)}**, "
+                    f"y el menor es **{menor['País']}** con **{_formatear_valor_chat(indicador_rank, menor[indicador_rank], modo_moneda)}**."
+                )
+
+    return "\n".join(lineas)
+
+
 def _detectar_indicador_en_pregunta(pregunta: str, indicadores: list[str], df_base: pd.DataFrame | None = None):
     pregunta_norm = _normalizar_chat_texto(pregunta)
 
@@ -3170,6 +3334,17 @@ def responder_chat_reglas(
     if df_base is None or df_base.empty:
         return f"No encontré datos disponibles de {nombre_base} con los filtros actuales."
 
+    filtros_detectados = _detectar_valores_estructura_en_pregunta(pregunta, df_base)
+    if filtros_detectados:
+        df_base_filtrada = _aplicar_filtros_detectados_chat(df_base, filtros_detectados)
+        if df_base_filtrada.empty:
+            detalle = _texto_filtros_detectados_chat(filtros_detectados)
+            return (
+                f"Detecté que preguntas por **{detalle}**, pero no encontré registros con esos valores "
+                f"dentro de los filtros actuales del tablero. Revisa si la unidad seleccionada, marca o país corresponde."
+            )
+        df_base = df_base_filtrada
+
     if "Semana del año" in df_base.columns:
         df_base = df_base.copy()
         df_base["Semana del año"] = pd.to_numeric(df_base["Semana del año"], errors="coerce")
@@ -3187,7 +3362,18 @@ def responder_chat_reglas(
         df_semana = df_base.copy()
 
     if df_semana.empty:
-        return f"No hay registros para la semana {semana_objetivo} con los filtros actuales."
+        detalle = _texto_filtros_detectados_chat(filtros_detectados) if 'filtros_detectados' in locals() else "filtros actuales"
+        return f"No hay registros para **{detalle}** en la semana {semana_objetivo}."
+
+    if _es_pregunta_resumen_chat(pregunta):
+        return _resumen_general_chat(
+            df_semana=df_semana,
+            indicadores_base=indicadores_base,
+            semana_objetivo=semana_objetivo,
+            nombre_base=nombre_base,
+            modo_moneda=modo_moneda,
+            filtros_detectados=filtros_detectados if 'filtros_detectados' in locals() else {},
+        )
 
     indicador = _detectar_indicador_en_pregunta(pregunta, indicadores_base, df_semana)
 
