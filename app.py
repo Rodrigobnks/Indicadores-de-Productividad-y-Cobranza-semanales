@@ -3079,11 +3079,7 @@ def comentario_tabla_cobranza(tabla, col_cuota, col_pago, col_cump):
 # ============================================================
 # CARGA DE DATOS
 # ============================================================
-st.markdown('<p class="titulo">📊 Indicadores de Productividad y Cobranza</p>', unsafe_allow_html=True)
-st.markdown(
-    '<p class="subtitulo">Semanal</p>',
-    unsafe_allow_html=True
-)
+# Encabezado superior eliminado para que no se duplique con el título central.
 
 # La sección de archivo queda oculta para que el tablero entre directo al análisis.
 # Si después necesitas volver a verla, cambia MOSTRAR_SECCION_ARCHIVO = True.
