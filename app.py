@@ -2155,18 +2155,37 @@ def consolidar_cobranza(
     if nivel and nivel in df_tmp.columns:
         grupo.append(nivel)
 
+def consolidar_cobranza(
+    df_cobranza: pd.DataFrame,
+    col_cuota: str,
+    col_pago: str,
+    col_cump: str,
+    col_mejor: str | None,
+    col_peor: str | None,
+    nivel: str | None = None
+):
+    df_tmp = df_cobranza.copy()
+
+    if "Semana del año" not in df_tmp.columns:
+        return pd.DataFrame()
+
+    grupo = []
+
+    if "Año" in df_tmp.columns:
+        grupo.append("Año")
+
+    grupo.append("Semana del año")
+
+    if nivel and nivel in df_tmp.columns:
+        grupo.append(nivel)
+
+    # Solo se suman cuota y pago.
+    # Mejor semana y peor semana se recalculan después del agrupado,
+    # para que respeten moneda local / pesos mexicanos y el filtro aplicado.
     agg = {
         col_cuota: "sum",
         col_pago: "sum",
     }
-
-    # Si la hoja ya trae mejor/peor semana, al agrupar varios países conviene usar:
-    # - Mejor semana: máximo
-    # - Peor semana: mínimo
-    if col_mejor:
-        agg[col_mejor] = "max"
-    if col_peor:
-        agg[col_peor] = "min"
 
     salida = (
         df_tmp
@@ -2175,30 +2194,35 @@ def consolidar_cobranza(
         .reset_index()
     )
 
+    # Recalcula cumplimiento sobre los datos ya agrupados
     salida[col_cump] = np.where(
         salida[col_cuota] == 0,
         np.nan,
         salida[col_pago] / salida[col_cuota]
     )
 
-    if not col_mejor:
-        salida["Mejor semana"] = salida[col_pago].max()
-        col_mejor = "Mejor semana"
+    # Recalcula mejor y peor semana sobre el pago ya convertido y agrupado.
+    # Esto corrige que "Mejor semana" quede por debajo de los recuperados.
+    salida["Mejor semana"] = salida[col_pago].max()
+    salida["Peor semana"] = salida[col_pago].min()
 
-    if not col_peor:
-        salida["Peor semana"] = salida[col_pago].min()
-        col_peor = "Peor semana"
+    col_mejor = "Mejor semana"
+    col_peor = "Peor semana"
+
+    salida = salida.sort_values(
+        ["Año", "Semana del año"] if "Año" in salida.columns else ["Semana del año"]
+    ).reset_index(drop=True)
 
     salida["Orden"] = range(len(salida))
-    salida = salida.sort_values(["Año", "Semana del año"] if "Año" in salida.columns else ["Semana del año"])
+
     salida["Etiqueta semana"] = salida.apply(
-        lambda r: f"{int(r['Año'])} S{int(r['Semana del año'])}" if "Año" in salida.columns and pd.notna(r["Año"])
+        lambda r: f"{int(r['Año'])} S{int(r['Semana del año'])}"
+        if "Año" in salida.columns and pd.notna(r["Año"])
         else f"S{int(r['Semana del año'])}",
         axis=1
     )
 
     return salida
-
 
 def formato_tabla_detalle_cobranza(df_tabla, col_cuota, col_pago, col_cump, col_mejor, col_peor):
     df_fmt = df_tabla.copy()
