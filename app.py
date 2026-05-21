@@ -456,23 +456,23 @@ st.markdown(
     }
 
     .comentario-amplio {
-        width: 100%;
-        max-width: 100%;
-        margin: 10px 0 18px 0;
-        padding: 18px 22px;
+        width: 80%;
+        max-width: 80%;
+        margin: 14px auto 22px auto;
+        padding: 18px 26px;
         background: rgba(219,234,254,0.98);
         border-left: 8px solid #d9c322;
         border-radius: 18px;
         box-shadow: 0 8px 22px rgba(15,23,42,0.12);
         color: #082567;
         font-size: 19px;
-        line-height: 1.45;
+        line-height: 1.55;
         font-weight: 600;
         box-sizing: border-box;
         text-align: left;
         position: static !important;
         clear: both;
-        overflow-wrap: anywhere;
+        overflow-wrap: break-word;
         word-break: normal;
     }
 
@@ -489,6 +489,7 @@ st.markdown(
 
     .comentario-amplio-texto {
         display: block;
+        white-space: normal;
     }
 
     .comentario-amplio strong {
@@ -497,6 +498,8 @@ st.markdown(
 
     @media (max-width: 900px) {
         .comentario-amplio {
+            width: 96%;
+            max-width: 96%;
             font-size: 17px;
             padding: 16px 18px;
         }
@@ -1102,6 +1105,56 @@ def aplicar_filtros_cobranza_todas_las_semanas(df_base: pd.DataFrame, filtros: d
     for col, seleccion in filtros.items():
         if col in df_tmp.columns and seleccion:
             df_tmp = df_tmp[df_tmp[col].astype(str).isin(seleccion)]
+
+    return df_tmp
+
+
+
+def aplicar_filtros_cobranza_desde_cartera(
+    df_cobranza_base: pd.DataFrame,
+    df_cartera_base: pd.DataFrame,
+    filtros: dict
+) -> pd.DataFrame:
+    """
+    Filtra Cobranza usando la selección hecha en Cartera.
+    Esto corrige el caso donde Cobranza solo trae País, pero el usuario eligió
+    Unidad de Negocio o Marca en la barra superior. En ese caso primero se obtiene
+    desde Cartera la lista de países/marcas que corresponden a la unidad elegida
+    y luego se aplica esa lista a Cobranza.
+    """
+    df_tmp = df_cobranza_base.copy()
+
+    if df_tmp.empty:
+        return df_tmp
+
+    df_ref = filtrar_por_diccionario(df_cartera_base, filtros)
+
+    if df_ref.empty:
+        return df_tmp.iloc[0:0].copy()
+
+    columnas_puente = [
+        "Unidad de Negocio",
+        "Marca",
+        "País",
+        "Subdireccion",
+        "Zona",
+        "Sucursal",
+        "Ruta",
+    ]
+
+    for col in columnas_puente:
+        if col in df_tmp.columns and col in df_ref.columns:
+            valores_validos = (
+                df_ref[col]
+                .dropna()
+                .astype(str)
+                .str.strip()
+                .unique()
+                .tolist()
+            )
+
+            if valores_validos:
+                df_tmp = df_tmp[df_tmp[col].astype(str).str.strip().isin(valores_validos)]
 
     return df_tmp
 
@@ -3153,6 +3206,8 @@ if modulo_seleccionado == "Cartera":
     # ============================================================
     # GRÁFICAS CARTERA
     # ============================================================
+    comentario_evolucion = ""
+    comentario_pie = ""
     col1, col2 = st.columns([1.15, 0.85])
 
     with col1:
@@ -3198,12 +3253,10 @@ if modulo_seleccionado == "Cartera":
 
             evol["Variación vs anterior"] = evol[indicador_grafica].diff()
 
-            with col_menu:
-                comentario_evolucion = generar_comentario_evolucion(
-                    evol=evol,
-                    indicador=indicador_grafica
-                )
-                mostrar_boton_comentario("grafica_evolucion", comentario_evolucion)
+            comentario_evolucion = generar_comentario_evolucion(
+                evol=evol,
+                indicador=indicador_grafica
+            )
 
             evol["Etiqueta"] = evol.apply(
                 lambda x:
@@ -3311,15 +3364,12 @@ if modulo_seleccionado == "Cartera":
             margin=dict(t=20, b=20, l=20, r=20)
         )
 
-        col_pie_grafica, col_pie_comentario = st.columns([4, 1])
+        st.plotly_chart(fig_pie, use_container_width=True)
+        comentario_pie = generar_comentario_pie(pie)
 
-        with col_pie_grafica:
-            st.plotly_chart(fig_pie, use_container_width=True)
 
-        with col_pie_comentario:
-            comentario_pie = generar_comentario_pie(pie)
-            mostrar_boton_comentario("pie_coordinadoras", comentario_pie)
-
+    mostrar_boton_comentario("grafica_evolucion", comentario_evolucion)
+    mostrar_boton_comentario("pie_coordinadoras", comentario_pie)
 
 
     # ============================================================
@@ -3419,14 +3469,14 @@ if modulo_seleccionado == "Cartera":
                 with col_resumen_mov:
                     mostrar_cuadro_resumen_movimientos(movimientos)
 
-                    comentario_matriz = generar_comentario_matriz(
-                        matriz=matriz_movimientos,
-                        movimientos=movimientos,
-                        semana_origen=semana_origen,
-                        semana_destino=semana_destino
-                    )
+                comentario_matriz = generar_comentario_matriz(
+                    matriz=matriz_movimientos,
+                    movimientos=movimientos,
+                    semana_origen=semana_origen,
+                    semana_destino=semana_destino
+                )
 
-                    mostrar_boton_comentario("matriz_movimientos", comentario_matriz)
+                mostrar_boton_comentario("matriz_movimientos", comentario_matriz)
 
                 with st.expander("Ver detalle de coordinadoras desplazadas", expanded=False):
                     detalle_movimientos = movimientos.copy()
@@ -3451,6 +3501,7 @@ if modulo_seleccionado == "Cartera":
     # TOP / BOTTOM POR VARIABLE
     # ============================================================
     st.subheader("Top / Bottom por variable")
+    comentario_top_bottom = ""
 
     niveles_top_bottom = [
         c for c in [
@@ -3537,14 +3588,12 @@ if modulo_seleccionado == "Cartera":
                         f"por {nivel_top_bottom} para la variable seleccionada."
                     )
 
-                    with col_opciones_top_bottom:
-                        comentario_top_bottom = generar_comentario_top_bottom(
-                            tabla_top_bottom=tabla_top_bottom,
-                            tipo_top_bottom=tipo_top_bottom,
-                            nivel_top_bottom=nivel_top_bottom,
-                            semana_actual=semana_actual
-                        )
-                        mostrar_boton_comentario("top_bottom", comentario_top_bottom)
+                    comentario_top_bottom = generar_comentario_top_bottom(
+                        tabla_top_bottom=tabla_top_bottom,
+                        tipo_top_bottom=tipo_top_bottom,
+                        nivel_top_bottom=nivel_top_bottom,
+                        semana_actual=semana_actual
+                    )
 
                     st.dataframe(
                         aplicar_formato_top_bottom(tabla_top_bottom),
@@ -3562,13 +3611,12 @@ if modulo_seleccionado == "Cartera":
                     )
 
 
+    mostrar_boton_comentario("top_bottom", comentario_top_bottom)
+
     # ============================================================
     # TABLA POR NIVEL
     # ============================================================
-    col_titulo_detalle, col_btn_detalle = st.columns([5, 1])
-
-    with col_titulo_detalle:
-        st.subheader(f"Detalle agrupado por {nivel}")
+    st.subheader(f"Detalle agrupado por {nivel}")
 
     detalle = tabla_por_nivel(
         df_filtrado=df_filtrado,
@@ -3577,13 +3625,12 @@ if modulo_seleccionado == "Cartera":
         semana_actual=semana_actual
     )
 
-    with col_btn_detalle:
-        comentario_detalle = generar_comentario_detalle(
-            detalle=detalle,
-            nivel=nivel,
-            semana_actual=semana_actual
-        )
-        mostrar_boton_comentario("detalle_agrupado", comentario_detalle)
+    comentario_detalle = generar_comentario_detalle(
+        detalle=detalle,
+        nivel=nivel,
+        semana_actual=semana_actual
+    )
+    mostrar_boton_comentario("detalle_agrupado", comentario_detalle)
 
     st.dataframe(
         aplicar_formato_tabla(detalle),
@@ -3633,8 +3680,9 @@ else:
             # Aplica SOLO filtros de estructura en Cobranza.
             # No se filtra por la semana de análisis para que las gráficas
             # muestren todo el histórico disponible, no solo las últimas semanas seleccionadas.
-            df_cobranza_filtrada = aplicar_filtros_cobranza_todas_las_semanas(
-                df_base=df_cobranza_preparada,
+            df_cobranza_filtrada = aplicar_filtros_cobranza_desde_cartera(
+                df_cobranza_base=df_cobranza_preparada,
+                df_cartera_base=df,
                 filtros=filtros
             )
 
@@ -3708,19 +3756,14 @@ else:
                     # ------------------------------
                     # Tabla base de Cobranza
                     # ------------------------------
-                    col_tabla_base, col_com_tabla_base = st.columns([5, 1])
-
-                    with col_tabla_base:
-                        st.markdown("**Tabla semanal de cobranza**")
-
-                    with col_com_tabla_base:
-                        comentario_base = comentario_cobranza_cuota_pago(
-                            evol=evol_cobranza,
-                            col_cuota=col_cuota,
-                            col_pago=col_pago,
-                            col_cump=col_cump
-                        )
-                        mostrar_boton_comentario("cobranza_tabla_base", comentario_base)
+                    st.markdown("**Tabla semanal de cobranza**")
+                    comentario_base = comentario_cobranza_cuota_pago(
+                        evol=evol_cobranza,
+                        col_cuota=col_cuota,
+                        col_pago=col_pago,
+                        col_cump=col_cump
+                    )
+                    mostrar_boton_comentario("cobranza_tabla_base", comentario_base)
 
                     columnas_tabla_cob = [
                         c for c in [
@@ -3754,16 +3797,11 @@ else:
                     # ------------------------------
                     # Gráfica cumplimiento
                     # ------------------------------
-                    col_titulo_cump, col_btn_cump = st.columns([5, 1])
-
-                    with col_titulo_cump:
-                        st.markdown("**% Cumplimiento semanal**")
-
-                    with col_btn_cump:
-                        mostrar_boton_comentario(
-                            "cobranza_cumplimiento",
-                            comentario_cobranza_cumplimiento(evol_cobranza, col_cump)
-                        )
+                    st.markdown("**% Cumplimiento semanal**")
+                    mostrar_boton_comentario(
+                        "cobranza_cumplimiento",
+                        comentario_cobranza_cumplimiento(evol_cobranza, col_cump)
+                    )
 
                     fig_cump = grafica_cumplimiento(evol_cobranza, col_cump)
                     st.plotly_chart(fig_cump, use_container_width=True)
@@ -3771,16 +3809,11 @@ else:
                     # ------------------------------
                     # Gráfica cuota vs pago
                     # ------------------------------
-                    col_titulo_cp, col_btn_cp = st.columns([5, 1])
-
-                    with col_titulo_cp:
-                        st.markdown("**Cuota total vs Pago total**")
-
-                    with col_btn_cp:
-                        mostrar_boton_comentario(
-                            "cobranza_cuota_pago",
-                            comentario_cobranza_cuota_pago(evol_cobranza, col_cuota, col_pago, col_cump)
-                        )
+                    st.markdown("**Cuota total vs Pago total**")
+                    mostrar_boton_comentario(
+                        "cobranza_cuota_pago",
+                        comentario_cobranza_cuota_pago(evol_cobranza, col_cuota, col_pago, col_cump)
+                    )
 
                     fig_cp = grafica_cuota_pago(
                         evol=evol_cobranza,
@@ -3801,16 +3834,11 @@ else:
                         col_cump=col_cump
                     )
 
-                    col_titulo_res_cob, col_btn_res_cob = st.columns([5, 1])
-
-                    with col_titulo_res_cob:
-                        st.markdown("**Últimas 5 semanas de cobranza**")
-
-                    with col_btn_res_cob:
-                        mostrar_boton_comentario(
-                            "cobranza_ultimas_5",
-                            comentario_tabla_cobranza(tabla_ultimas_5_cobranza, col_cuota, col_pago, col_cump)
-                        )
+                    st.markdown("**Últimas 5 semanas de cobranza**")
+                    mostrar_boton_comentario(
+                        "cobranza_ultimas_5",
+                        comentario_tabla_cobranza(tabla_ultimas_5_cobranza, col_cuota, col_pago, col_cump)
+                    )
 
                     tabla_ultimas_5_fmt = formato_ultimas_5_cobranza(
                         tabla=tabla_ultimas_5_cobranza,
