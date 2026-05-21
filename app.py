@@ -16,7 +16,7 @@ import plotly.graph_objects as go
 # CONFIGURACIÓN
 # ============================================================
 st.set_page_config(
-    page_title="Evolución de Cartera",
+    page_title="Indicadores de Productividad y Cobranza",
     page_icon="📊",
     layout="wide"
 )
@@ -3079,9 +3079,9 @@ def comentario_tabla_cobranza(tabla, col_cuota, col_pago, col_cump):
 # ============================================================
 # CARGA DE DATOS
 # ============================================================
-st.markdown('<p class="titulo">📊 Evolución de Cartera</p>', unsafe_allow_html=True)
+st.markdown('<p class="titulo">📊 Indicadores de Productividad y Cobranza</p>', unsafe_allow_html=True)
 st.markdown(
-    '<p class="subtitulo">Vista ejecutiva por nivel de estructura, semana, indicadores, tipo de coordinadora y cobranza.</p>',
+    '<p class="subtitulo">Semanal</p>',
     unsafe_allow_html=True
 )
 
@@ -3156,8 +3156,8 @@ if unidades_negocio:
         st.markdown(
             """
             <div class="landing-wrap">
-                <div class="landing-title">Selecciona la unidad de negocio</div>
-                <div class="landing-subtitle">Elige la unidad que quieres analizar para entrar al tablero.</div>
+                <div class="landing-title">Indicadores de Productividad y Cobranza</div>
+                <div class="landing-subtitle">Semanal</div>
             </div>
             """,
             unsafe_allow_html=True
