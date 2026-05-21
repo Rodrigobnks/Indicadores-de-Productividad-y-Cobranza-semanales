@@ -1074,11 +1074,11 @@ def crear_grafica_evolucion_fija(
 
     if rango == 0:
         base = max(abs(y_max), 1)
-        y_min_fijo = y_min - base * 0.08
-        y_max_fijo = y_max + base * 0.14
+        y_min_fijo = y_min - base * 0.10
+        y_max_fijo = y_max + base * 0.20
     else:
-        y_min_fijo = y_min - rango * 0.18
-        y_max_fijo = y_max + rango * 0.28
+        y_min_fijo = y_min - rango * 0.22
+        y_max_fijo = y_max + rango * 0.45
 
     fig = go.Figure()
 
@@ -1086,10 +1086,7 @@ def crear_grafica_evolucion_fija(
         go.Scatter(
             x=df_plot["Semana texto"],
             y=df_plot[indicador_grafica],
-            mode="lines+markers+text",
-            text=df_plot["Texto valor"],
-            textposition="top center",
-            textfont=dict(color="#082567", size=10),
+            mode="lines+markers",
             line=dict(color="#082567", width=3),
             marker=dict(
                 size=10,
@@ -1100,12 +1097,13 @@ def crear_grafica_evolucion_fija(
                 [
                     df_plot["Texto variacion"],
                     df_plot["Semana del año"],
+                    df_plot["Texto valor"],
                 ],
                 axis=-1
             ),
             hovertemplate=(
                 "<b>Semana:</b> %{customdata[1]:.0f}<br>"
-                f"<b>{indicador_grafica}:</b> %{{y:,.0f}}<br>"
+                f"<b>{indicador_grafica}:</b> %{{customdata[2]}}<br>"
                 "<b>Variación vs anterior:</b> %{customdata[0]}"
                 "<extra></extra>"
             ),
@@ -1113,21 +1111,36 @@ def crear_grafica_evolucion_fija(
         )
     )
 
-    # La variación se coloca como anotación independiente.
-    # Esto evita que el dato principal y la variación se encimen.
+    # Valor y variación se muestran como anotaciones separadas.
+    # Ajusta yshift_variacion / yshift_valor si quieres más o menos distancia.
+    yshift_valor = 16
+    yshift_variacion = 46
+
     for _, fila in df_plot.iterrows():
+        fig.add_annotation(
+            x=fila["Semana texto"],
+            y=fila[indicador_grafica],
+            text=fila["Texto valor"],
+            showarrow=False,
+            yshift=yshift_valor,
+            font=dict(color="#082567", size=11),
+            bgcolor="rgba(255,255,255,0)",
+            borderwidth=0,
+            borderpad=0
+        )
+
         if pd.notna(fila["Variación vs anterior"]):
             fig.add_annotation(
                 x=fila["Semana texto"],
                 y=fila[indicador_grafica],
                 text=f"<b>{formato_variacion(fila['Variación vs anterior'])}</b>",
                 showarrow=False,
-                yshift=24,
-                font=dict(color="#082567", size=10),
-                bgcolor="rgba(255,255,255,0.75)",
-                bordercolor="rgba(8,37,103,0.12)",
+                yshift=yshift_variacion,
+                font=dict(color="#082567", size=12),
+                bgcolor="rgba(255,255,255,0.86)",
+                bordercolor="rgba(8,37,103,0.16)",
                 borderwidth=1,
-                borderpad=2
+                borderpad=3
             )
 
     ticks_y = np.linspace(y_min_fijo, y_max_fijo, 5)
@@ -1143,7 +1156,7 @@ def crear_grafica_evolucion_fija(
         showlegend=False,
         hovermode="x unified",
         dragmode=False,
-        margin=dict(t=58, b=54, l=72, r=30),
+        margin=dict(t=90, b=54, l=72, r=42),
         paper_bgcolor="rgba(255,255,255,0)",
         plot_bgcolor="rgba(255,255,255,1)",
         font=dict(color="#082567", size=12),
