@@ -709,6 +709,22 @@ st.markdown(
         font-weight: 900;
         margin: 0 8px 10px 0;
     }
+
+
+    .top-bottom-opciones-card {
+        background: rgba(255,255,255,0.97);
+        border: 1px solid rgba(226,232,240,0.95);
+        border-radius: 18px;
+        padding: 12px 16px;
+        margin: 10px 0 10px 0;
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.08);
+    }
+
+    .top-bottom-opciones-title {
+        color: #082567;
+        font-size: 20px;
+        font-weight: 900;
+    }
     </style>
     """,
     unsafe_allow_html=True
@@ -3495,30 +3511,78 @@ if modulo_seleccionado == "Cartera":
                 .reset_index(name="Coordinadoras")
             )
 
-        fig_pie = px.pie(
-            pie,
-            names="Tipo Coordinadora",
-            values="Coordinadoras",
-            hole=0.35
+        pie = pie.sort_values("Coordinadoras", ascending=False).copy()
+        pie["Etiqueta"] = pie.apply(
+            lambda r: f"{r['Tipo Coordinadora']}<br>{float(r['Coordinadoras']):,.0f}<br>{(float(r['Coordinadoras']) / max(float(pie['Coordinadoras'].sum()), 1)):.1%}",
+            axis=1
+        )
+
+        colores_tipo_coordinadora = {
+            "Productiva": "#ffa0a4",
+            "En Desarrollo": "#7ec0ee",
+            "Improductiva": "#0b70c9",
+            "Secundaria": "#ff2d2d",
+        }
+
+        fig_pie = go.Figure(
+            data=[
+                go.Pie(
+                    labels=pie["Tipo Coordinadora"],
+                    values=pie["Coordinadoras"],
+                    hole=0.42,
+                    sort=False,
+                    direction="clockwise",
+                    text=pie["Etiqueta"],
+                    texttemplate="%{text}",
+                    textposition="outside",
+                    automargin=True,
+                    marker=dict(
+                        colors=[
+                            colores_tipo_coordinadora.get(str(tipo), None)
+                            for tipo in pie["Tipo Coordinadora"]
+                        ],
+                        line=dict(color="white", width=2)
+                    ),
+                    hovertemplate=(
+                        "<b>%{label}</b><br>"
+                        "Coordinadoras: %{value:,.0f}<br>"
+                        "Participación: %{percent:.1%}"
+                        "<extra></extra>"
+                    ),
+                    insidetextorientation="radial"
+                )
+            ]
         )
 
         fig_pie.update_traces(
-            textposition="inside",
-            textinfo="percent+label+value",
-            marker=dict(line=dict(color="white", width=2)),
-            textfont=dict(size=11, color="white")
+            textfont=dict(size=13, color="#082567", family="Arial"),
+            pull=[0.02] * len(pie)
         )
 
         fig_pie.update_layout(
-            height=430,
+            height=500,
             legend_title=None,
+            legend=dict(
+                orientation="h",
+                yanchor="bottom",
+                y=-0.18,
+                xanchor="center",
+                x=0.5,
+                font=dict(size=12, color="#082567")
+            ),
             paper_bgcolor="rgba(255,255,255,0)",
             plot_bgcolor="rgba(255,255,255,0)",
-            font=dict(color="#082567", size=12),
-            margin=dict(t=20, b=20, l=20, r=20)
+            font=dict(color="#082567", size=13),
+            margin=dict(t=30, b=95, l=95, r=95),
+            uniformtext_minsize=11,
+            uniformtext_mode="show"
         )
 
-        st.plotly_chart(fig_pie, use_container_width=True)
+        st.plotly_chart(
+            fig_pie,
+            use_container_width=True,
+            config={"displayModeBar": False, "responsive": True}
+        )
         comentario_pie = generar_comentario_pie(pie)
 
 
@@ -3684,11 +3748,18 @@ if modulo_seleccionado == "Cartera":
         st.info("No hay variables numéricas disponibles para construir el Top / Bottom.")
 
     else:
-        col_tabla_top_bottom, col_opciones_top_bottom = st.columns([2.2, 1])
+        st.markdown(
+            """
+            <div class="top-bottom-opciones-card">
+                <div class="top-bottom-opciones-title">Opciones</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-        with col_opciones_top_bottom:
-            st.markdown("**Opciones**")
+        col_tipo_tb, col_nivel_tb, col_variable_tb, col_cantidad_tb = st.columns([1.0, 1.35, 1.7, 1.25], gap="large")
 
+        with col_tipo_tb:
             tipo_top_bottom = st.radio(
                 "Vista",
                 options=["Top", "Bottom"],
@@ -3696,6 +3767,7 @@ if modulo_seleccionado == "Cartera":
                 key="tipo_top_bottom"
             )
 
+        with col_nivel_tb:
             nivel_top_bottom = st.selectbox(
                 "Estructura",
                 options=niveles_top_bottom,
@@ -3703,6 +3775,7 @@ if modulo_seleccionado == "Cartera":
                 key="nivel_top_bottom"
             )
 
+        with col_variable_tb:
             variable_top_bottom = st.selectbox(
                 "Variable",
                 options=variables_top_bottom_disponibles,
@@ -3710,8 +3783,7 @@ if modulo_seleccionado == "Cartera":
                 key="variable_top_bottom"
             )
 
-            variables_top_bottom = [variable_top_bottom]
-
+        with col_cantidad_tb:
             cantidad_top_bottom = st.number_input(
                 "Cantidad de registros por variable",
                 min_value=1,
@@ -3721,49 +3793,49 @@ if modulo_seleccionado == "Cartera":
                 key="cantidad_top_bottom"
             )
 
-        with col_tabla_top_bottom:
-            if not variable_top_bottom:
-                st.info("Selecciona una variable para mostrar el Top / Bottom.")
+        variables_top_bottom = [variable_top_bottom]
+
+        if not variable_top_bottom:
+            st.info("Selecciona una variable para mostrar el Top / Bottom.")
+        else:
+            tabla_top_bottom = construir_top_bottom_por_variable(
+                df_filtrado=df_filtrado,
+                nivel_top_bottom=nivel_top_bottom,
+                variables_top_bottom=variables_top_bottom,
+                semana_actual=semana_actual,
+                tipo_ranking=tipo_top_bottom,
+                cantidad=int(cantidad_top_bottom)
+            )
+
+            if tabla_top_bottom.empty:
+                st.info("No hay datos para mostrar con la selección actual.")
             else:
-                tabla_top_bottom = construir_top_bottom_por_variable(
-                    df_filtrado=df_filtrado,
-                    nivel_top_bottom=nivel_top_bottom,
-                    variables_top_bottom=variables_top_bottom,
-                    semana_actual=semana_actual,
-                    tipo_ranking=tipo_top_bottom,
-                    cantidad=int(cantidad_top_bottom)
+                st.caption(
+                    f"Semana {semana_actual} | {tipo_top_bottom} "
+                    f"por {nivel_top_bottom} para la variable seleccionada."
                 )
 
-                if tabla_top_bottom.empty:
-                    st.info("No hay datos para mostrar con la selección actual.")
-                else:
-                    st.caption(
-                        f"Semana {semana_actual} | {tipo_top_bottom} "
-                        f"por {nivel_top_bottom} para la variable seleccionada."
-                    )
+                comentario_top_bottom = generar_comentario_top_bottom(
+                    tabla_top_bottom=tabla_top_bottom,
+                    tipo_top_bottom=tipo_top_bottom,
+                    nivel_top_bottom=nivel_top_bottom,
+                    semana_actual=semana_actual
+                )
 
-                    comentario_top_bottom = generar_comentario_top_bottom(
-                        tabla_top_bottom=tabla_top_bottom,
-                        tipo_top_bottom=tipo_top_bottom,
-                        nivel_top_bottom=nivel_top_bottom,
-                        semana_actual=semana_actual
-                    )
+                st.dataframe(
+                    aplicar_formato_top_bottom(tabla_top_bottom),
+                    use_container_width=True,
+                    hide_index=True
+                )
 
-                    st.dataframe(
-                        aplicar_formato_top_bottom(tabla_top_bottom),
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                csv_top_bottom = tabla_top_bottom.to_csv(index=False).encode("utf-8-sig")
 
-                    csv_top_bottom = tabla_top_bottom.to_csv(index=False).encode("utf-8-sig")
-
-                    st.download_button(
-                        label="Descargar Top / Bottom",
-                        data=csv_top_bottom,
-                        file_name=f"top_bottom_{nivel_top_bottom}_semana_{semana_actual}.csv",
-                        mime="text/csv"
-                    )
-
+                st.download_button(
+                    label="Descargar Top / Bottom",
+                    data=csv_top_bottom,
+                    file_name=f"top_bottom_{nivel_top_bottom}_semana_{semana_actual}.csv",
+                    mime="text/csv"
+                )
 
     mostrar_boton_comentario("top_bottom", comentario_top_bottom)
 
