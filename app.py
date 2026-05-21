@@ -1010,6 +1010,183 @@ def formato_pct(valor, decimales=2, signo=False):
     return f"{prefijo}{valor:.{decimales}%}"
 
 
+
+def formato_eje_compacto(valor):
+    """
+    Formato corto para el eje Y.
+    Evita que números muy grandes ocupen demasiado espacio y compriman la gráfica.
+    """
+    if pd.isna(valor):
+        return ""
+
+    try:
+        valor = float(valor)
+    except Exception:
+        return str(valor)
+
+    abs_valor = abs(valor)
+
+    if abs_valor >= 1_000_000_000:
+        return f"{valor / 1_000_000_000:,.2f}B"
+    if abs_valor >= 1_000_000:
+        return f"{valor / 1_000_000:,.1f}M"
+    if abs_valor >= 1_000:
+        return f"{valor / 1_000:,.0f}K"
+
+    return f"{valor:,.0f}"
+
+
+def crear_grafica_evolucion_fija(
+    evol: pd.DataFrame,
+    indicador_grafica: str,
+    modo_moneda: str,
+    altura: int = 430
+):
+    """
+    Gráfica de evolución semanal con escala fija, sin zoom, sin desplazamiento
+    y con etiquetas separadas para que se lean bien los datos y las variaciones.
+    """
+    df_plot = evol.copy()
+    df_plot = df_plot.dropna(subset=["Semana del año", indicador_grafica]).copy()
+
+    if df_plot.empty:
+        return go.Figure(), {}
+
+    df_plot["Semana del año"] = pd.to_numeric(df_plot["Semana del año"], errors="coerce")
+    df_plot[indicador_grafica] = pd.to_numeric(df_plot[indicador_grafica], errors="coerce").fillna(0)
+    df_plot["Variación vs anterior"] = pd.to_numeric(
+        df_plot["Variación vs anterior"],
+        errors="coerce"
+    )
+
+    df_plot = df_plot.sort_values("Semana del año").reset_index(drop=True)
+    df_plot["Semana texto"] = df_plot["Semana del año"].apply(lambda x: f"S{int(x)}")
+
+    df_plot["Texto valor"] = df_plot[indicador_grafica].apply(lambda x: f"{x:,.0f}")
+    df_plot["Texto variacion"] = df_plot["Variación vs anterior"].apply(
+        lambda x: formato_variacion(x) if pd.notna(x) else ""
+    )
+
+    valores_y = df_plot[indicador_grafica].astype(float)
+    y_min = float(valores_y.min())
+    y_max = float(valores_y.max())
+    rango = y_max - y_min
+
+    if rango == 0:
+        base = max(abs(y_max), 1)
+        y_min_fijo = y_min - base * 0.08
+        y_max_fijo = y_max + base * 0.14
+    else:
+        y_min_fijo = y_min - rango * 0.18
+        y_max_fijo = y_max + rango * 0.28
+
+    fig = go.Figure()
+
+    fig.add_trace(
+        go.Scatter(
+            x=df_plot["Semana texto"],
+            y=df_plot[indicador_grafica],
+            mode="lines+markers+text",
+            text=df_plot["Texto valor"],
+            textposition="top center",
+            textfont=dict(color="#082567", size=10),
+            line=dict(color="#082567", width=3),
+            marker=dict(
+                size=10,
+                color="#d9c322",
+                line=dict(color="#082567", width=2)
+            ),
+            customdata=np.stack(
+                [
+                    df_plot["Texto variacion"],
+                    df_plot["Semana del año"],
+                ],
+                axis=-1
+            ),
+            hovertemplate=(
+                "<b>Semana:</b> %{customdata[1]:.0f}<br>"
+                f"<b>{indicador_grafica}:</b> %{{y:,.0f}}<br>"
+                "<b>Variación vs anterior:</b> %{customdata[0]}"
+                "<extra></extra>"
+            ),
+            cliponaxis=False
+        )
+    )
+
+    # La variación se coloca como anotación independiente.
+    # Esto evita que el dato principal y la variación se encimen.
+    for _, fila in df_plot.iterrows():
+        if pd.notna(fila["Variación vs anterior"]):
+            fig.add_annotation(
+                x=fila["Semana texto"],
+                y=fila[indicador_grafica],
+                text=f"<b>{formato_variacion(fila['Variación vs anterior'])}</b>",
+                showarrow=False,
+                yshift=24,
+                font=dict(color="#082567", size=10),
+                bgcolor="rgba(255,255,255,0.75)",
+                bordercolor="rgba(8,37,103,0.12)",
+                borderwidth=1,
+                borderpad=2
+            )
+
+    ticks_y = np.linspace(y_min_fijo, y_max_fijo, 5)
+
+    titulo_eje_y = (
+        f"Monto ({etiqueta_moneda(modo_moneda)})"
+        if es_columna_monetaria(indicador_grafica)
+        else "Valor"
+    )
+
+    fig.update_layout(
+        height=altura,
+        showlegend=False,
+        hovermode="x unified",
+        dragmode=False,
+        margin=dict(t=58, b=54, l=72, r=30),
+        paper_bgcolor="rgba(255,255,255,0)",
+        plot_bgcolor="rgba(255,255,255,1)",
+        font=dict(color="#082567", size=12),
+        xaxis_title="Semana",
+        yaxis_title=titulo_eje_y,
+        uirevision="grafica_evolucion_fija",
+        transition_duration=0,
+        clickmode="none"
+    )
+
+    fig.update_xaxes(
+        type="category",
+        categoryorder="array",
+        categoryarray=df_plot["Semana texto"].tolist(),
+        fixedrange=True,
+        showgrid=False,
+        zeroline=False,
+        tickfont=dict(size=11, color="#64748b"),
+        title_font=dict(size=12, color="#64748b")
+    )
+
+    fig.update_yaxes(
+        fixedrange=True,
+        range=[y_min_fijo, y_max_fijo],
+        tickmode="array",
+        tickvals=ticks_y,
+        ticktext=[formato_eje_compacto(v) for v in ticks_y],
+        gridcolor="rgba(148,163,184,0.25)",
+        zeroline=False,
+        tickfont=dict(size=11, color="#64748b"),
+        title_font=dict(size=12, color="#64748b")
+    )
+
+    config = {
+        "displayModeBar": False,
+        "scrollZoom": False,
+        "doubleClick": False,
+        "responsive": False,
+        "staticPlot": False,
+    }
+
+    return fig, config
+
 def tarjeta_kpi(label, valor, variacion=None):
     valor_fmt = formato_numero(valor)
 
@@ -3258,51 +3435,19 @@ if modulo_seleccionado == "Cartera":
                 indicador=indicador_grafica
             )
 
-            evol["Etiqueta"] = evol.apply(
-                lambda x:
-                    f"{x[indicador_grafica]:,.0f}<br>{formato_variacion(x['Variación vs anterior'])}"
-                    if pd.notna(x["Variación vs anterior"])
-                    else f"{x[indicador_grafica]:,.0f}",
-                axis=1
-            )
-
             with col_grafica:
-                fig_linea = px.line(
-                    evol,
-                    x="Semana del año",
-                    y=indicador_grafica,
-                    markers=True,
-                    text="Etiqueta",
-                    custom_data=["Variación vs anterior"]
+                fig_linea, config_linea = crear_grafica_evolucion_fija(
+                    evol=evol,
+                    indicador_grafica=indicador_grafica,
+                    modo_moneda=modo_moneda,
+                    altura=430
                 )
 
-                fig_linea.update_traces(
-                    texttemplate="%{text}",
-                    textposition="top center",
-                    line=dict(color="#082567", width=3),
-                    marker=dict(size=9, color="#d9c322", line=dict(color="#082567", width=2)),
-                    textfont=dict(color="#082567", size=11),
-                    hovertemplate=
-                        "<b>Semana:</b> %{x}<br>" +
-                        f"<b>{indicador_grafica}:</b> %{{y:,.0f}}<br>" +
-                        "<b>Variación vs anterior:</b> %{customdata[0]:,.0f}<extra></extra>"
+                st.plotly_chart(
+                    fig_linea,
+                    use_container_width=True,
+                    config=config_linea
                 )
-
-                fig_linea.update_layout(
-                    height=430,
-                    xaxis_title="Semana",
-                    yaxis_title=f"Monto ({etiqueta_moneda(modo_moneda)})",
-                    showlegend=False,
-                    hovermode="x unified",
-                    margin=dict(t=40, b=40, l=40, r=20),
-                    paper_bgcolor="rgba(255,255,255,0)",
-                    plot_bgcolor="rgba(255,255,255,1)",
-                    font=dict(color="#082567", size=12),
-                    xaxis=dict(gridcolor="rgba(148,163,184,0.25)"),
-                    yaxis=dict(gridcolor="rgba(148,163,184,0.25)")
-                )
-
-                st.plotly_chart(fig_linea, use_container_width=True)
 
         else:
             st.info("No hay indicadores disponibles para la gráfica de evolución semanal.")
@@ -3971,5 +4116,3 @@ else:
                             semana_actual=semana_top_bottom_cobranza
                         )
                         mostrar_boton_comentario("top_bottom_cobranza", comentario_top_bottom_cobranza)
-
-
