@@ -2756,13 +2756,156 @@ def generar_resumen_ia_paises(
     return "\n\n".join(texto)
 
 
+
+def calcular_resumen_cobranza_para_modal(
+    df_cobranza_base: pd.DataFrame | None,
+    df_cartera_base: pd.DataFrame,
+    filtros_aplicados: dict,
+    semana_referencia: int | None = None,
+):
+    """
+    Construye un resumen de Cobranza para la ventana emergente.
+    Usa los mismos filtros superiores del tablero y compara la última semana
+    disponible de Cobranza contra la semana anterior disponible.
+    """
+    if df_cobranza_base is None or df_cobranza_base.empty:
+        return pd.DataFrame(), None, None
+
+    try:
+        df_cob_filtrada = aplicar_filtros_cobranza_desde_cartera(
+            df_cobranza_base=df_cobranza_base,
+            df_cartera_base=df_cartera_base,
+            filtros=filtros_aplicados,
+        )
+    except Exception:
+        df_cob_filtrada = df_cobranza_base.copy()
+
+    if df_cob_filtrada is None or df_cob_filtrada.empty:
+        return pd.DataFrame(), None, None
+
+    df_cob, col_cuota, col_pago, col_cump, col_mejor, col_peor = preparar_cobranza(df_cob_filtrada)
+
+    if "Semana del año" not in df_cob.columns or col_cuota is None or col_pago is None:
+        return pd.DataFrame(), None, None
+
+    df_cob = df_cob.copy()
+    df_cob["Semana del año"] = pd.to_numeric(df_cob["Semana del año"], errors="coerce")
+    df_cob = df_cob.dropna(subset=["Semana del año"])
+
+    if df_cob.empty:
+        return pd.DataFrame(), None, None
+
+    semanas_disponibles = sorted(df_cob["Semana del año"].astype(int).unique().tolist())
+
+    if semana_referencia is not None:
+        semanas_hasta_ref = [s for s in semanas_disponibles if s <= int(semana_referencia)]
+        semana_actual_cob = semanas_hasta_ref[-1] if semanas_hasta_ref else semanas_disponibles[-1]
+    else:
+        semana_actual_cob = semanas_disponibles[-1]
+
+    semanas_previas = [s for s in semanas_disponibles if s < semana_actual_cob]
+    semana_anterior_cob = semanas_previas[-1] if semanas_previas else None
+
+    def _agregar_semana(semana):
+        df_sem = df_cob[df_cob["Semana del año"].astype(int) == int(semana)].copy()
+        cuota = pd.to_numeric(df_sem[col_cuota], errors="coerce").fillna(0).sum()
+        pago = pd.to_numeric(df_sem[col_pago], errors="coerce").fillna(0).sum()
+        cumplimiento = np.nan if cuota == 0 else pago / cuota
+        datos = {
+            col_cuota: cuota,
+            col_pago: pago,
+            "% de Cumplimiento": cumplimiento,
+        }
+        if col_mejor and col_mejor in df_sem.columns:
+            datos[col_mejor] = pd.to_numeric(df_sem[col_mejor], errors="coerce").fillna(0).max()
+        if col_peor and col_peor in df_sem.columns:
+            datos[col_peor] = pd.to_numeric(df_sem[col_peor], errors="coerce").fillna(0).min()
+        return datos
+
+    actual = _agregar_semana(semana_actual_cob)
+    anterior = _agregar_semana(semana_anterior_cob) if semana_anterior_cob is not None else {}
+
+    indicadores_cobranza = [col_cuota, col_pago, "% de Cumplimiento"]
+    if col_mejor and col_mejor in actual:
+        indicadores_cobranza.append(col_mejor)
+    if col_peor and col_peor in actual:
+        indicadores_cobranza.append(col_peor)
+
+    filas = []
+    for indicador in indicadores_cobranza:
+        val_actual = actual.get(indicador, np.nan)
+        val_anterior = anterior.get(indicador, np.nan)
+        variacion = np.nan if pd.isna(val_anterior) else val_actual - val_anterior
+
+        if indicador == "% de Cumplimiento":
+            pct_var = variacion
+        else:
+            pct_var = np.nan if pd.isna(val_anterior) or val_anterior == 0 else variacion / val_anterior
+
+        filas.append({
+            "Indicador": indicador,
+            f"Dato sem {semana_actual_cob}": val_actual,
+            "Variación vs sem ant": variacion,
+            "% Var": pct_var,
+        })
+
+    return pd.DataFrame(filas), semana_actual_cob, semana_anterior_cob
+
+
+def aplicar_formato_tabla_resumen_mixto(df_tabla: pd.DataFrame) -> pd.DataFrame:
+    """
+    Formato para tablas de resumen que mezclan montos y porcentajes.
+
+    Importante:
+    En versiones recientes de pandas, una columna numérica ya no permite
+    asignar directamente textos como "236,843,298" o "82.55%".
+    Por eso primero convertimos la tabla a object/string-safe antes de
+    reemplazar valores numéricos por valores formateados.
+    """
+    if df_tabla is None or df_tabla.empty:
+        return pd.DataFrame()
+
+    df_fmt = df_tabla.copy().astype(object)
+
+    for idx, fila in df_tabla.iterrows():
+        indicador = str(fila.get("Indicador", ""))
+        indicador_norm = normalizar_texto_tc(indicador).lower()
+        es_pct = indicador.strip().startswith("%") or "cumplimiento" in indicador_norm
+
+        for col in df_fmt.columns:
+            if col == "Indicador":
+                df_fmt.at[idx, col] = indicador
+                continue
+
+            valor = fila.get(col)
+
+            try:
+                if es_pct:
+                    if "Variación" in str(col) or "% Var" in str(col):
+                        df_fmt.at[idx, col] = formato_pct(valor, 2, True)
+                    else:
+                        df_fmt.at[idx, col] = formato_pct(valor, 2, False)
+                elif "% Var" in str(col):
+                    df_fmt.at[idx, col] = formato_pct(valor, 1, True)
+                elif "Variación" in str(col) or str(col).startswith("Var "):
+                    df_fmt.at[idx, col] = formato_variacion(valor)
+                else:
+                    df_fmt.at[idx, col] = formato_numero(valor)
+            except Exception:
+                df_fmt.at[idx, col] = "" if pd.isna(valor) else str(valor)
+
+    return df_fmt
+
 def abrir_modal_resumen_pais(
     resumen: pd.DataFrame,
     semana_actual: int,
     semana_anterior,
     comentario_resumen: str,
     modo_moneda: str,
-    filtros_aplicados: dict
+    filtros_aplicados: dict,
+    resumen_cobranza: pd.DataFrame | None = None,
+    semana_actual_cobranza: int | None = None,
+    semana_anterior_cobranza: int | None = None,
 ):
     """
     Abre un resumen ejecutivo en ventana emergente.
@@ -2828,8 +2971,55 @@ def abrir_modal_resumen_pais(
                 height=380
             )
 
+        if resumen_cobranza is not None and not resumen_cobranza.empty:
+            st.markdown("### Resumen de cobranza")
+
+            metricas_cob_modal = [
+                c for c in ["Cuota Total Cobranza", "Recuperación semana", "% de Cumplimiento"]
+                if c in resumen_cobranza["Indicador"].astype(str).tolist()
+            ]
+
+            if metricas_cob_modal and semana_actual_cobranza is not None:
+                col_cob_modal = st.columns(len(metricas_cob_modal))
+                for idx, indicador in enumerate(metricas_cob_modal):
+                    fila_cob = resumen_cobranza[resumen_cobranza["Indicador"] == indicador].iloc[0]
+                    valor_cob = fila_cob.get(f"Dato sem {semana_actual_cobranza}", np.nan)
+                    var_cob = fila_cob.get("Variación vs sem ant", np.nan)
+
+                    with col_cob_modal[idx]:
+                        if indicador.strip().startswith("%") or "cumplimiento" in normalizar_texto_tc(indicador).lower():
+                            valor_txt = formato_pct(valor_cob, 2, False)
+                            var_txt = formato_pct(var_cob, 2, True) if pd.notna(var_cob) else ""
+                            st.markdown(
+                                f"""
+                                <div class="kpi-card">
+                                    <div class="kpi-label">{indicador}</div>
+                                    <div class="kpi-value">{valor_txt}</div>
+                                    <div class="kpi-delta-neutral">{var_txt}</div>
+                                </div>
+                                """,
+                                unsafe_allow_html=True
+                            )
+                        else:
+                            tarjeta_kpi(
+                                label=indicador,
+                                valor=valor_cob,
+                                variacion=var_cob if semana_anterior_cobranza is not None else None
+                            )
+
+            st.dataframe(
+                aplicar_formato_tabla_resumen_mixto(resumen_cobranza),
+                use_container_width=True,
+                hide_index=True,
+                height=230
+            )
+        else:
+            st.info("No se encontró información de Cobranza para incluirla en este resumen.")
+
         if st.button("Cerrar resumen", key="btn_cerrar_modal_resumen", use_container_width=True):
             st.session_state["abrir_resumen_pais"] = False
+            st.session_state["abrir_chat_analisis"] = False
+            st.session_state["modal_activo"] = None
             st.rerun()
 
 
@@ -3149,6 +3339,8 @@ def abrir_modal_chat_analisis(
         with col_cerrar:
             if st.button("Cerrar chat", key="btn_cerrar_chat_reglas", use_container_width=True):
                 st.session_state["abrir_chat_analisis"] = False
+                st.session_state["abrir_resumen_pais"] = False
+                st.session_state["modal_activo"] = None
                 st.rerun()
 
     _dialogo_chat()
@@ -3596,10 +3788,14 @@ for col_filtro, col_streamlit in [("Marca", col_marca), ("País", col_pais)]:
 with col_resumen_pais:
     if st.button("Resumen semana país", key="btn_abrir_resumen_pais", use_container_width=True):
         st.session_state["abrir_resumen_pais"] = True
+        st.session_state["abrir_chat_analisis"] = False
+        st.session_state["modal_activo"] = "resumen_pais"
 
 with col_chat:
     if st.button("Chat", key="btn_abrir_chat_analisis", use_container_width=True):
         st.session_state["abrir_chat_analisis"] = True
+        st.session_state["abrir_resumen_pais"] = False
+        st.session_state["modal_activo"] = "chat_analisis"
 
 with col_cambiar:
     if unidad_negocio_seleccionada is not None:
@@ -3683,18 +3879,27 @@ comentario_general_pais = generar_resumen_ia_paises(
     filtros_aplicados=filtros
 )
 
-if st.session_state.get("abrir_resumen_pais", False):
+if st.session_state.get("abrir_resumen_pais", False) and st.session_state.get("modal_activo") == "resumen_pais":
+    resumen_cobranza_modal, semana_actual_cob_modal, semana_anterior_cob_modal = calcular_resumen_cobranza_para_modal(
+        df_cobranza_base=df_cobranza,
+        df_cartera_base=df,
+        filtros_aplicados=filtros,
+        semana_referencia=semana_actual,
+    )
+
     abrir_modal_resumen_pais(
         resumen=resumen_general_pais,
         semana_actual=semana_actual,
         semana_anterior=semana_anterior_general_pais,
         comentario_resumen=comentario_general_pais,
         modo_moneda=modo_moneda,
-        filtros_aplicados=filtros
+        filtros_aplicados=filtros,
+        resumen_cobranza=resumen_cobranza_modal,
+        semana_actual_cobranza=semana_actual_cob_modal,
+        semana_anterior_cobranza=semana_anterior_cob_modal,
     )
-    st.session_state["abrir_resumen_pais"] = False
 
-if st.session_state.get("abrir_chat_analisis", False):
+if st.session_state.get("abrir_chat_analisis", False) and st.session_state.get("modal_activo") == "chat_analisis":
     if df_cobranza is not None and not df_cobranza.empty:
         df_cobranza_chat_filtrada = aplicar_filtros_cobranza_desde_cartera(
             df_cobranza_base=df_cobranza,
