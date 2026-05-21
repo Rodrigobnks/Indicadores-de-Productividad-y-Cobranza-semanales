@@ -3016,11 +3016,6 @@ def abrir_modal_resumen_pais(
         else:
             st.info("No se encontró información de Cobranza para incluirla en este resumen.")
 
-        if st.button("Cerrar resumen", key="btn_cerrar_modal_resumen", use_container_width=True):
-            st.session_state["abrir_resumen_pais"] = False
-            st.session_state["abrir_chat_analisis"] = False
-            st.session_state["modal_activo"] = None
-            st.rerun()
 
 
     _dialogo_resumen()
