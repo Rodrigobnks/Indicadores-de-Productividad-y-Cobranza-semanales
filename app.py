@@ -3971,17 +3971,31 @@ for col_filtro, col_streamlit in [("Marca", col_marca), ("País", col_pais)]:
         with col_streamlit:
             st.caption(f"Sin columna {col_filtro}")
 
+# IMPORTANTE:
+# El resumen se abre solo en el clic de este botón.
+# No se deja guardado como estado persistente, porque si el usuario lo cierra
+# con la X de Streamlit, el estado no se limpia y el resumen se vuelve a abrir
+# al presionar cualquier otro botón del tablero.
+abrir_resumen_pais_click = False
+abrir_chat_analisis_click = False
+
 with col_resumen_pais:
-    if st.button("Resumen semana país", key="btn_abrir_resumen_pais", use_container_width=True):
-        st.session_state["abrir_resumen_pais"] = True
-        st.session_state["abrir_chat_analisis"] = False
-        st.session_state["modal_activo"] = "resumen_pais"
+    abrir_resumen_pais_click = st.button(
+        "Resumen semana país",
+        key="btn_abrir_resumen_pais",
+        use_container_width=True
+    )
 
 with col_chat:
-    if st.button("Chat", key="btn_abrir_chat_analisis", use_container_width=True):
-        st.session_state["abrir_chat_analisis"] = True
-        st.session_state["abrir_resumen_pais"] = False
-        st.session_state["modal_activo"] = "chat_analisis"
+    abrir_chat_analisis_click = st.button(
+        "Chat",
+        key="btn_abrir_chat_analisis",
+        use_container_width=True
+    )
+
+if abrir_chat_analisis_click:
+    st.session_state["abrir_chat_analisis"] = True
+    st.session_state["modal_activo"] = "chat_analisis"
 
 with col_cambiar:
     if unidad_negocio_seleccionada is not None:
@@ -4065,7 +4079,13 @@ comentario_general_pais = generar_resumen_ia_paises(
     filtros_aplicados=filtros
 )
 
-if st.session_state.get("abrir_resumen_pais", False) and st.session_state.get("modal_activo") == "resumen_pais":
+if abrir_resumen_pais_click:
+    # El resumen se abre únicamente cuando se oprime el botón correspondiente.
+    # Esto evita que se vuelva a abrir al usar filtros, descargar archivos,
+    # limpiar chat o cambiar unidad después de haberlo cerrado con la X.
+    st.session_state["abrir_chat_analisis"] = False
+    st.session_state["modal_activo"] = None
+
     resumen_cobranza_modal, semana_actual_cob_modal, semana_anterior_cob_modal = calcular_resumen_cobranza_para_modal(
         df_cobranza_base=df_cobranza,
         df_cartera_base=df,
