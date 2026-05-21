@@ -2832,7 +2832,326 @@ def abrir_modal_resumen_pais(
             st.session_state["abrir_resumen_pais"] = False
             st.rerun()
 
+
     _dialogo_resumen()
+
+
+def _normalizar_chat_texto(texto):
+    texto = normalizar_texto_tc(str(texto)).lower()
+    for ch in [",", ".", ";", ":", "?", "¿", "!", "¡", "(", ")", "[", "]"]:
+        texto = texto.replace(ch, " ")
+    return " ".join(texto.split())
+
+
+def _detectar_paises_en_pregunta(pregunta: str, df_base: pd.DataFrame):
+    if df_base is None or df_base.empty or "País" not in df_base.columns:
+        return []
+
+    pregunta_norm = _normalizar_chat_texto(pregunta)
+    paises = sorted(df_base["País"].dropna().astype(str).unique(), key=lambda x: len(str(x)), reverse=True)
+    encontrados = []
+
+    for pais in paises:
+        pais_norm = _normalizar_chat_texto(pais)
+        if pais_norm and pais_norm in pregunta_norm:
+            encontrados.append(pais)
+
+    return encontrados
+
+
+def _detectar_nivel_en_pregunta(pregunta: str, df_base: pd.DataFrame):
+    pregunta_norm = _normalizar_chat_texto(pregunta)
+
+    candidatos = [
+        ("ruta", "Ruta"),
+        ("sucursal", "Sucursal"),
+        ("zona", "Zona"),
+        ("subdireccion", "Subdireccion"),
+        ("subdirección", "Subdireccion"),
+        ("pais", "País"),
+        ("país", "País"),
+        ("marca", "Marca"),
+        ("region", "Region"),
+        ("región", "Region"),
+    ]
+
+    for palabra, columna in candidatos:
+        if palabra in pregunta_norm and columna in df_base.columns:
+            return columna
+
+    if "País" in df_base.columns:
+        return "País"
+
+    return next((c for c in ["Marca", "Ruta", "Sucursal", "Zona"] if c in df_base.columns), None)
+
+
+def _detectar_indicador_en_pregunta(pregunta: str, indicadores: list[str], df_base: pd.DataFrame | None = None):
+    pregunta_norm = _normalizar_chat_texto(pregunta)
+
+    columnas = list(indicadores or [])
+    if df_base is not None:
+        columnas += [c for c in df_base.columns if c not in columnas]
+
+    # Coincidencia directa por nombre de columna.
+    for col in columnas:
+        col_norm = _normalizar_chat_texto(col)
+        if col_norm and col_norm in pregunta_norm:
+            return col
+
+    alias = [
+        (["cumplimiento", "% cumplimiento", "porcentaje"], "% de Cumplimiento"),
+        (["recuperacion", "recuperación", "pago", "cobranza"], "Recuperación semana"),
+        (["cuota"], "Cuota Total Cobranza"),
+        (["faltas", "falta"], "Faltas"),
+        (["nunca abonados", "nunca abonado"], "Nunca Abonados"),
+        (["clientes al corriente", "corriente"], "Clientes al corriente"),
+        (["clientes totales", "clientes"], "Clientes Totales"),
+        (["cartera total"], "Cartera Total"),
+        (["saldo en atraso", "atraso"], "Saldo en atraso"),
+        (["saldo cartera", "cartera"], "Saldo Cartera"),
+        (["saldo pp", "pp"], "Saldo PP"),
+    ]
+
+    for palabras, col_sugerida in alias:
+        if any(_normalizar_chat_texto(p) in pregunta_norm for p in palabras):
+            for col in columnas:
+                if _normalizar_chat_texto(col) == _normalizar_chat_texto(col_sugerida):
+                    return col
+
+    for preferido in ["% de Cumplimiento", "Recuperación semana", "Clientes al corriente", "Cartera Total", "Faltas"]:
+        for col in columnas:
+            if _normalizar_chat_texto(col) == _normalizar_chat_texto(preferido):
+                return col
+
+    return columnas[0] if columnas else None
+
+
+def _formatear_valor_chat(variable: str, valor, modo_moneda: str):
+    if pd.isna(valor):
+        return "sin dato"
+
+    variable_norm = _normalizar_chat_texto(variable)
+    if "cumplimiento" in variable_norm or str(variable).strip().startswith("%"):
+        return formato_pct(valor, 2, False)
+
+    if es_columna_monetaria(variable):
+        return f"{formato_numero(valor)} {etiqueta_moneda(modo_moneda)}"
+
+    return formato_numero(valor)
+
+
+def _preparar_base_chat_cobranza(df_cobranza_chat: pd.DataFrame | None):
+    if df_cobranza_chat is None or df_cobranza_chat.empty:
+        return None, []
+
+    df_cob, col_cuota, col_pago, col_cump, col_mejor, col_peor = preparar_cobranza(df_cobranza_chat)
+    indicadores_cob = [c for c in [col_cuota, col_pago, col_cump, col_mejor, col_peor] if c and c in df_cob.columns]
+    return df_cob, indicadores_cob
+
+
+def responder_chat_reglas(
+    pregunta: str,
+    df_cartera_chat: pd.DataFrame,
+    df_cobranza_chat: pd.DataFrame | None,
+    indicadores_cartera: list[str],
+    semana_actual: int,
+    modo_moneda: str,
+    modulo_seleccionado: str,
+):
+    """
+    Chat sin IA externa. Responde con reglas sobre el contenido filtrado del tablero.
+    No usa API; analiza tablas agrupadas de Cartera o Cobranza.
+    """
+    pregunta_norm = _normalizar_chat_texto(pregunta)
+
+    usar_cobranza = (
+        modulo_seleccionado == "Cobranza"
+        or any(p in pregunta_norm for p in ["cobranza", "cumplimiento", "recuperacion", "recuperación", "cuota", "pago"])
+    )
+
+    if usar_cobranza:
+        df_base, indicadores_base = _preparar_base_chat_cobranza(df_cobranza_chat)
+        nombre_base = "Cobranza"
+    else:
+        df_base = df_cartera_chat.copy() if df_cartera_chat is not None else pd.DataFrame()
+        indicadores_base = indicadores_cartera
+        nombre_base = "Cartera"
+
+    if df_base is None or df_base.empty:
+        return f"No encontré datos disponibles de {nombre_base} con los filtros actuales."
+
+    if "Semana del año" in df_base.columns:
+        df_base = df_base.copy()
+        df_base["Semana del año"] = pd.to_numeric(df_base["Semana del año"], errors="coerce")
+        semanas_disponibles = sorted([int(s) for s in df_base["Semana del año"].dropna().unique()])
+        if semanas_disponibles:
+            semana_objetivo = semanas_disponibles[-1]
+        else:
+            semana_objetivo = semana_actual
+    else:
+        semana_objetivo = semana_actual
+
+    if "Semana del año" in df_base.columns:
+        df_semana = df_base[df_base["Semana del año"] == semana_objetivo].copy()
+    else:
+        df_semana = df_base.copy()
+
+    if df_semana.empty:
+        return f"No hay registros para la semana {semana_objetivo} con los filtros actuales."
+
+    indicador = _detectar_indicador_en_pregunta(pregunta, indicadores_base, df_semana)
+
+    if indicador is None or indicador not in df_semana.columns:
+        disponibles = ", ".join([str(x) for x in indicadores_base[:8]])
+        return f"No pude identificar el indicador de la pregunta. Indicadores disponibles: {disponibles}."
+
+    # Si Cobranza trae cuota y pago, calcula cumplimiento correctamente al agrupar.
+    df_semana[indicador] = pd.to_numeric(df_semana[indicador], errors="coerce")
+
+    paises_pregunta = _detectar_paises_en_pregunta(pregunta, df_semana)
+
+    # Comparativo entre dos o más países.
+    if len(paises_pregunta) >= 2 and "País" in df_semana.columns:
+        paises_comp = paises_pregunta[:4]
+        tabla = (
+            df_semana[df_semana["País"].astype(str).isin(paises_comp)]
+            .groupby("País", dropna=False)[indicador]
+            .sum(numeric_only=True)
+            .reset_index()
+            .sort_values(indicador, ascending=False)
+        )
+
+        if tabla.empty:
+            return "Encontré los países mencionados, pero no hay datos comparables con los filtros actuales."
+
+        lineas = [
+            f"Comparativo de **{indicador}** en la semana **{semana_objetivo}** ({nombre_base}):"
+        ]
+        for _, fila in tabla.iterrows():
+            lineas.append(f"- **{fila['País']}**: {_formatear_valor_chat(indicador, fila[indicador], modo_moneda)}")
+
+        if len(tabla) >= 2:
+            mejor = tabla.iloc[0]
+            segundo = tabla.iloc[1]
+            brecha = mejor[indicador] - segundo[indicador]
+            lineas.append(
+                f"\nEl mayor registro lo tiene **{mejor['País']}**, con una diferencia de "
+                f"**{_formatear_valor_chat(indicador, brecha, modo_moneda)}** frente a **{segundo['País']}**."
+            )
+
+        return "\n".join(lineas)
+
+    nivel = _detectar_nivel_en_pregunta(pregunta, df_semana)
+
+    if nivel is None:
+        valor_total = pd.to_numeric(df_semana[indicador], errors="coerce").sum()
+        return (
+            f"En la semana **{semana_objetivo}**, el total de **{indicador}** en {nombre_base} es "
+            f"**{_formatear_valor_chat(indicador, valor_total, modo_moneda)}**."
+        )
+
+    tabla_nivel = (
+        df_semana
+        .groupby(nivel, dropna=False)[indicador]
+        .sum(numeric_only=True)
+        .reset_index()
+    )
+
+    if tabla_nivel.empty:
+        return f"No hay datos suficientes para agrupar por {nivel}."
+
+    asc = any(p in pregunta_norm for p in ["peor", "menor", "bottom", "bajo", "baja", "menos"])
+    top_n = 5 if any(p in pregunta_norm for p in ["top", "ranking", "mejores", "peores", "bottom"]) else 3
+    tabla_rank = tabla_nivel.sort_values(indicador, ascending=asc).head(top_n)
+
+    if any(p in pregunta_norm for p in ["mejor", "mayor", "top", "peor", "menor", "bottom", "ranking"]):
+        tipo = "menores" if asc else "mayores"
+        lineas = [f"Los **{top_n} {tipo} registros** de **{indicador}** por **{nivel}** en la semana **{semana_objetivo}** son:"]
+        for i, (_, fila) in enumerate(tabla_rank.iterrows(), start=1):
+            lineas.append(f"{i}. **{fila[nivel]}**: {_formatear_valor_chat(indicador, fila[indicador], modo_moneda)}")
+        return "\n".join(lineas)
+
+    total = pd.to_numeric(df_semana[indicador], errors="coerce").sum()
+    promedio = tabla_nivel[indicador].mean()
+    mayor = tabla_nivel.sort_values(indicador, ascending=False).iloc[0]
+    menor = tabla_nivel.sort_values(indicador, ascending=True).iloc[0]
+
+    return (
+        f"En la semana **{semana_objetivo}**, el total de **{indicador}** en {nombre_base} es "
+        f"**{_formatear_valor_chat(indicador, total, modo_moneda)}**. "
+        f"Por **{nivel}**, el mayor registro es **{mayor[nivel]}** con "
+        f"**{_formatear_valor_chat(indicador, mayor[indicador], modo_moneda)}**, "
+        f"mientras que el menor es **{menor[nivel]}** con "
+        f"**{_formatear_valor_chat(indicador, menor[indicador], modo_moneda)}**. "
+        f"El promedio por {nivel} es **{_formatear_valor_chat(indicador, promedio, modo_moneda)}**."
+    )
+
+
+def abrir_modal_chat_analisis(
+    df_cartera_chat: pd.DataFrame,
+    df_cobranza_chat: pd.DataFrame | None,
+    indicadores_cartera: list[str],
+    semana_actual: int,
+    modo_moneda: str,
+    modulo_seleccionado: str,
+    filtros_aplicados: dict,
+):
+    @st.dialog("Chat de análisis", width="large")
+    def _dialogo_chat():
+        if "historial_chat_reglas" not in st.session_state:
+            st.session_state["historial_chat_reglas"] = []
+
+        filtros_visibles = []
+        for col, val in filtros_aplicados.items():
+            if val:
+                filtros_visibles.append(f"{col}: {', '.join([str(x) for x in val])}")
+
+        st.caption(
+            "Chat sin IA externa. Responde con reglas sobre los datos filtrados del tablero. "
+            + ("Filtros: " + " | ".join(filtros_visibles) if filtros_visibles else "Filtros: todos")
+        )
+
+        ejemplos = st.expander("Ejemplos de preguntas", expanded=False)
+        with ejemplos:
+            st.markdown(
+                "- Compara Colombia vs Perú en cumplimiento\n"
+                "- ¿Cuál país tiene más faltas?\n"
+                "- Dame el top de rutas por clientes al corriente\n"
+                "- ¿Cuál es el bottom de sucursales por cobranza?\n"
+                "- Resume cartera por país"
+            )
+
+        for mensaje in st.session_state["historial_chat_reglas"][-10:]:
+            with st.chat_message(mensaje["role"]):
+                st.markdown(mensaje["content"])
+
+        pregunta = st.chat_input("Pregunta algo sobre el contenido del tablero")
+
+        if pregunta:
+            st.session_state["historial_chat_reglas"].append({"role": "user", "content": pregunta})
+            respuesta = responder_chat_reglas(
+                pregunta=pregunta,
+                df_cartera_chat=df_cartera_chat,
+                df_cobranza_chat=df_cobranza_chat,
+                indicadores_cartera=indicadores_cartera,
+                semana_actual=semana_actual,
+                modo_moneda=modo_moneda,
+                modulo_seleccionado=modulo_seleccionado,
+            )
+            st.session_state["historial_chat_reglas"].append({"role": "assistant", "content": respuesta})
+            st.rerun()
+
+        col_limpiar, col_cerrar = st.columns([1, 1])
+        with col_limpiar:
+            if st.button("Limpiar chat", key="btn_limpiar_chat_reglas", use_container_width=True):
+                st.session_state["historial_chat_reglas"] = []
+                st.rerun()
+        with col_cerrar:
+            if st.button("Cerrar chat", key="btn_cerrar_chat_reglas", use_container_width=True):
+                st.session_state["abrir_chat_analisis"] = False
+                st.rerun()
+
+    _dialogo_chat()
 
 
 def generar_comentario_evolucion(evol: pd.DataFrame, indicador: str):
@@ -3227,7 +3546,7 @@ if unidad_negocio_seleccionada is not None:
 
 base_para_filtros = filtrar_por_diccionario(df, filtros)
 
-col_unidad_actual, col_modulo, col_moneda, col_marca, col_pais, col_resumen_pais, col_cambiar = st.columns([1.15, 0.95, 1.2, 1.05, 1.05, 1.25, 0.85])
+col_unidad_actual, col_modulo, col_moneda, col_marca, col_pais, col_resumen_pais, col_chat, col_cambiar = st.columns([1.10, 0.90, 1.10, 0.95, 0.95, 1.10, 0.80, 0.85])
 
 with col_unidad_actual:
     if unidad_negocio_seleccionada is not None:
@@ -3277,6 +3596,10 @@ for col_filtro, col_streamlit in [("Marca", col_marca), ("País", col_pais)]:
 with col_resumen_pais:
     if st.button("Resumen semana país", key="btn_abrir_resumen_pais", use_container_width=True):
         st.session_state["abrir_resumen_pais"] = True
+
+with col_chat:
+    if st.button("Chat", key="btn_abrir_chat_analisis", use_container_width=True):
+        st.session_state["abrir_chat_analisis"] = True
 
 with col_cambiar:
     if unidad_negocio_seleccionada is not None:
@@ -3370,6 +3693,26 @@ if st.session_state.get("abrir_resumen_pais", False):
         filtros_aplicados=filtros
     )
     st.session_state["abrir_resumen_pais"] = False
+
+if st.session_state.get("abrir_chat_analisis", False):
+    if df_cobranza is not None and not df_cobranza.empty:
+        df_cobranza_chat_filtrada = aplicar_filtros_cobranza_desde_cartera(
+            df_cobranza_base=df_cobranza,
+            df_cartera_base=df,
+            filtros=filtros
+        )
+    else:
+        df_cobranza_chat_filtrada = None
+
+    abrir_modal_chat_analisis(
+        df_cartera_chat=df_filtrado,
+        df_cobranza_chat=df_cobranza_chat_filtrada,
+        indicadores_cartera=indicadores_sel,
+        semana_actual=semana_actual,
+        modo_moneda=modo_moneda,
+        modulo_seleccionado=modulo_seleccionado,
+        filtros_aplicados=filtros,
+    )
 
 # ============================================================
 # CONTROL DE DATOS
