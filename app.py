@@ -731,27 +731,18 @@ st.markdown(
 )
 
 
+
 # ============================================================
-# FIX VISUAL PARA NAVEGADORES / TRADUCCIÓN / MODO OSCURO
-# Mantiene el formato original de fuentes y grosores.
-# Solo fuerza visibilidad/color para evitar textos blancos en algunas computadoras.
+# FIX VISUAL SEGURO PARA NAVEGADORES / TRADUCCIÓN / MODO OSCURO
+# No cambia el peso/tamaño original de las letras; solo fuerza visibilidad.
 # ============================================================
 st.markdown(
     """
-    <meta name="google" content="notranslate">
+    <div class="notranslate" translate="no"></div>
     <style>
     html, body, .stApp, [data-testid="stAppViewContainer"] {
-        color: #061a40 !important;
-        -webkit-text-fill-color: #061a40 !important;
         opacity: 1 !important;
         filter: none !important;
-    }
-
-    h1, h2, h3, h4, h5, h6,
-    p, span, div, label {
-        opacity: 1 !important;
-        visibility: visible !important;
-        text-shadow: none !important;
     }
 
     label,
@@ -783,8 +774,6 @@ st.markdown(
 
     div[data-baseweb="select"] > div {
         background-color: #ffffff !important;
-        border: 1px solid rgba(8,37,103,0.35) !important;
-        box-shadow: none !important;
     }
 
     div[data-testid="stRadio"],
@@ -803,7 +792,6 @@ st.markdown(
     div[data-testid="stDownloadButton"] > button * {
         color: #ffffff !important;
         -webkit-text-fill-color: #ffffff !important;
-        background-color: #082567 !important;
         opacity: 1 !important;
         visibility: visible !important;
     }
@@ -816,7 +804,9 @@ st.markdown(
         visibility: visible !important;
     }
 
-    input, textarea, select {
+    input,
+    textarea,
+    select {
         color: #061a40 !important;
         -webkit-text-fill-color: #061a40 !important;
         background-color: #ffffff !important;
