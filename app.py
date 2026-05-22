@@ -306,7 +306,7 @@ st.markdown(
     .main .block-container {
         padding-top: 1.3rem;
         padding-bottom: 2rem;
-        background: rgba(255,255,255,0.78) !important;
+        background: var(--app-bg-card, rgba(255,255,255,0.94)) !important;
         border-radius: 28px !important;
         padding: 1.6rem 2rem 2.2rem 2rem !important;
         box-shadow: 0 14px 40px rgba(15, 23, 42, 0.12) !important;
@@ -522,8 +522,9 @@ st.markdown(
     """
     <style>
     .top-filter-card {
-        background: rgba(255,255,255,0.97);
-        border: 1px solid rgba(226,232,240,0.95);
+        background: var(--app-panel-bg, #ffffff) !important;
+        color: var(--app-text-main, #111827) !important;
+        border: 1px solid var(--app-border, rgba(226,232,240,0.95));
         border-radius: 18px;
         padding: 14px 16px 8px 16px;
         margin: 10px 0 18px 0;
@@ -724,6 +725,330 @@ st.markdown(
         color: #082567;
         font-size: 20px;
         font-weight: 900;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+
+# ============================================================
+# MODO CLARO / OSCURO AUTOMÁTICO
+# Este bloque debe quedar después de los estilos principales.
+# Corrige labels invisibles en usuarios con modo oscuro del navegador/Windows.
+# ============================================================
+st.markdown(
+    """
+    <style>
+    :root {
+        --app-bg-card: rgba(255,255,255,0.94);
+        --app-panel-bg: rgba(255,255,255,0.97);
+        --app-panel-solid: #ffffff;
+        --app-text-main: #111827;
+        --app-text-soft: #374151;
+        --app-brand: #082567;
+        --app-brand-soft: #dbeafe;
+        --app-accent: #d9c322;
+        --app-border: rgba(226,232,240,0.95);
+        --app-input-bg: #ffffff;
+        --app-chart-bg: rgba(255,255,255,0.96);
+        --app-shadow: 0 8px 24px rgba(15, 23, 42, 0.09);
+    }
+
+    html,
+    body,
+    .stApp,
+    [data-testid="stAppViewContainer"] {
+        color-scheme: light dark !important;
+    }
+
+    .main .block-container {
+        background: var(--app-bg-card) !important;
+        color: var(--app-text-main) !important;
+        border-color: var(--app-border) !important;
+    }
+
+    .top-filter-card,
+    .top-bottom-opciones-card,
+    div[data-testid="stPlotlyChart"],
+    div[data-testid="stDataFrame"],
+    div[data-testid="stTable"],
+    div[data-testid="stMetric"],
+    .kpi-card,
+    .unidad-card,
+    div[data-testid="stExpander"] {
+        background: var(--app-panel-bg) !important;
+        color: var(--app-text-main) !important;
+        border-color: var(--app-border) !important;
+        box-shadow: var(--app-shadow) !important;
+    }
+
+    .top-filter-title,
+    h1, h2, h3, h4,
+    .titulo,
+    .kpi-label,
+    .unidad-name,
+    .top-bottom-opciones-title {
+        color: var(--app-brand) !important;
+        -webkit-text-fill-color: var(--app-brand) !important;
+        opacity: 1 !important;
+    }
+
+    .subtitulo,
+    .unidad-help,
+    div[data-testid="stMarkdownContainer"] p {
+        color: var(--app-text-soft) !important;
+        -webkit-text-fill-color: var(--app-text-soft) !important;
+        opacity: 1 !important;
+    }
+
+    /* Labels de filtros: Vista, Moneda, Marca, País */
+    .top-filter-card label,
+    .top-filter-card label p,
+    .top-filter-card div[data-testid="stWidgetLabel"],
+    .top-filter-card div[data-testid="stWidgetLabel"] p,
+    .top-filter-card .stRadio label,
+    .top-filter-card .stSelectbox label,
+    .top-filter-card .stTextInput label,
+    .top-filter-card .stFileUploader label {
+        color: var(--app-brand) !important;
+        -webkit-text-fill-color: var(--app-brand) !important;
+        opacity: 1 !important;
+        font-weight: 900 !important;
+    }
+
+    /* Texto de radios y contenido de filtros */
+    .top-filter-card p,
+    .top-filter-card span,
+    .top-filter-card div[role="radiogroup"] label,
+    .top-filter-card div[role="radiogroup"] p,
+    .top-filter-card div[role="radiogroup"] span,
+    .top-filter-card div[data-baseweb="radio"] label,
+    .top-filter-card div[data-baseweb="radio"] p,
+    .top-filter-card div[data-baseweb="radio"] span {
+        color: var(--app-text-main) !important;
+        -webkit-text-fill-color: var(--app-text-main) !important;
+        opacity: 1 !important;
+    }
+
+    /* Selectbox e inputs */
+    .top-filter-card div[data-baseweb="select"] > div,
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="input"] > div,
+    input,
+    textarea,
+    select {
+        background-color: var(--app-input-bg) !important;
+        color: var(--app-text-main) !important;
+        -webkit-text-fill-color: var(--app-text-main) !important;
+        border-color: var(--app-border) !important;
+        opacity: 1 !important;
+    }
+
+    .top-filter-card div[data-baseweb="select"] span,
+    .top-filter-card div[data-baseweb="select"] div,
+    .top-filter-card div[data-baseweb="select"] input,
+    div[data-baseweb="select"] span,
+    div[data-baseweb="select"] div,
+    div[data-baseweb="select"] input {
+        color: var(--app-text-main) !important;
+        -webkit-text-fill-color: var(--app-text-main) !important;
+        opacity: 1 !important;
+    }
+
+    .top-filter-card div[data-baseweb="select"] svg,
+    div[data-baseweb="select"] svg {
+        fill: var(--app-text-main) !important;
+        color: var(--app-text-main) !important;
+        opacity: 1 !important;
+    }
+
+    div[role="listbox"],
+    ul[role="listbox"] {
+        background-color: var(--app-input-bg) !important;
+        color: var(--app-text-main) !important;
+    }
+
+    div[role="option"],
+    li[role="option"] {
+        background-color: var(--app-input-bg) !important;
+        color: var(--app-text-main) !important;
+        -webkit-text-fill-color: var(--app-text-main) !important;
+    }
+
+    div[role="option"]:hover,
+    li[role="option"]:hover {
+        background-color: rgba(148,163,184,0.20) !important;
+        color: var(--app-text-main) !important;
+        -webkit-text-fill-color: var(--app-text-main) !important;
+    }
+
+    .kpi-value {
+        color: var(--app-text-main) !important;
+        -webkit-text-fill-color: var(--app-text-main) !important;
+    }
+
+    .unidad-seleccionada-pill,
+    .top-filter-card div.stButton > button,
+    div.stButton > button,
+    div[data-testid="stDownloadButton"] > button {
+        background-color: var(--app-brand) !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        border-color: var(--app-brand) !important;
+        opacity: 1 !important;
+    }
+
+    .top-filter-card div.stButton > button p,
+    .top-filter-card div.stButton > button span,
+    div.stButton > button p,
+    div.stButton > button span,
+    div[data-testid="stDownloadButton"] > button p,
+    div[data-testid="stDownloadButton"] > button span {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        opacity: 1 !important;
+    }
+
+    .comentario-amplio {
+        background: var(--app-brand-soft) !important;
+        color: var(--app-brand) !important;
+        border-left-color: var(--app-accent) !important;
+    }
+
+    /* Modo oscuro automático según Windows/navegador */
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --app-bg-card: rgba(15,23,42,0.94);
+            --app-panel-bg: rgba(15,23,42,0.96);
+            --app-panel-solid: #0f172a;
+            --app-text-main: #f8fafc;
+            --app-text-soft: #e5e7eb;
+            --app-brand: #dbeafe;
+            --app-brand-soft: rgba(30,41,59,0.98);
+            --app-accent: #d9c322;
+            --app-border: rgba(148,163,184,0.35);
+            --app-input-bg: #111827;
+            --app-chart-bg: rgba(15,23,42,0.96);
+            --app-shadow: 0 8px 24px rgba(0,0,0,0.28);
+        }
+
+        .stApp {
+            background-image: linear-gradient(rgba(15,23,42,0.80), rgba(15,23,42,0.88)) !important;
+            background-color: #020617 !important;
+            background-attachment: scroll !important;
+        }
+
+        header[data-testid="stHeader"] {
+            background: rgba(2,6,23,0) !important;
+        }
+
+        .main .block-container {
+            box-shadow: 0 14px 40px rgba(0,0,0,0.35) !important;
+        }
+
+        .top-filter-title,
+        h1, h2, h3, h4,
+        .titulo,
+        .kpi-label,
+        .unidad-name,
+        .top-bottom-opciones-title,
+        .top-filter-card label,
+        .top-filter-card label p,
+        .top-filter-card div[data-testid="stWidgetLabel"],
+        .top-filter-card div[data-testid="stWidgetLabel"] p,
+        .top-filter-card .stRadio label,
+        .top-filter-card .stSelectbox label {
+            color: #dbeafe !important;
+            -webkit-text-fill-color: #dbeafe !important;
+            opacity: 1 !important;
+        }
+
+        .top-filter-card p,
+        .top-filter-card span,
+        .top-filter-card div[role="radiogroup"] label,
+        .top-filter-card div[role="radiogroup"] p,
+        .top-filter-card div[role="radiogroup"] span,
+        .subtitulo,
+        .unidad-help,
+        div[data-testid="stMarkdownContainer"] p {
+            color: #e5e7eb !important;
+            -webkit-text-fill-color: #e5e7eb !important;
+            opacity: 1 !important;
+        }
+
+        .top-filter-card div[data-baseweb="select"] > div,
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="input"] > div,
+        input,
+        textarea,
+        select {
+            background-color: #111827 !important;
+            color: #f8fafc !important;
+            -webkit-text-fill-color: #f8fafc !important;
+            border: 1.5px solid rgba(219,234,254,0.45) !important;
+        }
+
+        .top-filter-card div[data-baseweb="select"] span,
+        .top-filter-card div[data-baseweb="select"] div,
+        .top-filter-card div[data-baseweb="select"] input,
+        div[data-baseweb="select"] span,
+        div[data-baseweb="select"] div,
+        div[data-baseweb="select"] input {
+            color: #f8fafc !important;
+            -webkit-text-fill-color: #f8fafc !important;
+            opacity: 1 !important;
+        }
+
+        .top-filter-card div[data-baseweb="select"] svg,
+        div[data-baseweb="select"] svg {
+            fill: #f8fafc !important;
+            color: #f8fafc !important;
+        }
+
+        div[role="listbox"],
+        ul[role="listbox"],
+        div[role="option"],
+        li[role="option"] {
+            background-color: #111827 !important;
+            color: #f8fafc !important;
+            -webkit-text-fill-color: #f8fafc !important;
+        }
+
+        div[role="option"]:hover,
+        li[role="option"]:hover {
+            background-color: #1e293b !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        .comentario-amplio {
+            background: rgba(30,41,59,0.98) !important;
+            color: #f8fafc !important;
+            -webkit-text-fill-color: #f8fafc !important;
+        }
+
+        .comentario-amplio-titulo {
+            background: #dbeafe !important;
+            color: #082567 !important;
+            -webkit-text-fill-color: #082567 !important;
+        }
+
+        .kpi-delta-positive {
+            color: #bbf7d0 !important;
+            background: rgba(22,101,52,0.45) !important;
+        }
+
+        .kpi-delta-negative {
+            color: #fecaca !important;
+            background: rgba(127,29,29,0.45) !important;
+        }
+
+        .kpi-delta-neutral {
+            color: #e5e7eb !important;
+            background: rgba(71,85,105,0.55) !important;
+        }
     }
     </style>
     """,
@@ -1056,7 +1381,7 @@ def crear_grafica_evolucion_fija(
     evol: pd.DataFrame,
     indicador_grafica: str,
     modo_moneda: str,
-    altura: int = 430
+    altura: int = 500
 ):
     """
     Gráfica de evolución semanal con escala fija, sin zoom, sin desplazamiento
@@ -1210,7 +1535,7 @@ def crear_grafica_evolucion_fija(
         "displayModeBar": False,
         "scrollZoom": False,
         "doubleClick": False,
-        "responsive": False,
+        "responsive": True,
         "staticPlot": False,
     }
 
