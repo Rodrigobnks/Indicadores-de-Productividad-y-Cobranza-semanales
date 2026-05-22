@@ -4822,3 +4822,295 @@ else:
                             semana_actual=semana_top_bottom_cobranza
                         )
                         mostrar_boton_comentario("top_bottom_cobranza", comentario_top_bottom_cobranza)
+# ============================================================
+# AJUSTE FINAL DE CONTRASTE SOLO PARA MODO OSCURO
+# ============================================================
+st.markdown(
+    """
+    <style>
+    /*
+       Este bloque NO modifica el modo claro.
+       Solo se activa cuando la computadora/navegador está en modo oscuro.
+       Corrige textos que se pierden por bajo contraste en filtros, botones,
+       gráficas Plotly, tablas y comentarios.
+    */
+    @media (prefers-color-scheme: dark) {
+
+        /* Colores base del tablero oscuro */
+        :root {
+            --dark-bg-main: #0f172a;
+            --dark-bg-card: #111827;
+            --dark-bg-card-2: #1e293b;
+            --dark-border: rgba(219,234,254,0.38);
+            --dark-text: #f8fafc;
+            --dark-text-soft: #e5e7eb;
+            --dark-title: #ffffff;
+            --dark-accent: #facc15;
+            --dark-button-bg: #dbeafe;
+            --dark-button-text: #082567;
+        }
+
+        html,
+        body,
+        .stApp,
+        [data-testid="stAppViewContainer"] {
+            color-scheme: dark !important;
+        }
+
+        .main .block-container {
+            background: rgba(15,23,42,0.96) !important;
+            color: var(--dark-text) !important;
+            border: 1px solid var(--dark-border) !important;
+        }
+
+        /* Tarjetas principales */
+        .top-filter-card,
+        .kpi-card,
+        .top-bottom-opciones-card,
+        div[data-testid="stPlotlyChart"],
+        div[data-testid="stDataFrame"],
+        div[data-testid="stTable"],
+        div[data-testid="stMetric"],
+        div[data-testid="stExpander"] {
+            background: rgba(17,24,39,0.96) !important;
+            color: var(--dark-text) !important;
+            border-color: var(--dark-border) !important;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.35) !important;
+        }
+
+        /* Títulos generales */
+        .top-filter-title,
+        .titulo,
+        h1, h2, h3, h4,
+        .landing-title,
+        .unidad-name,
+        .kpi-label {
+            color: var(--dark-title) !important;
+            -webkit-text-fill-color: var(--dark-title) !important;
+            opacity: 1 !important;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.45) !important;
+        }
+
+        h2::after,
+        h3::after {
+            background: var(--dark-accent) !important;
+            opacity: 1 !important;
+        }
+
+        /* Textos secundarios */
+        .subtitulo,
+        .landing-subtitle,
+        .unidad-help,
+        div[data-testid="stMarkdownContainer"] p,
+        .top-filter-card p,
+        .top-filter-card span,
+        .top-filter-card small {
+            color: var(--dark-text-soft) !important;
+            -webkit-text-fill-color: var(--dark-text-soft) !important;
+            opacity: 1 !important;
+        }
+
+        /* Labels de filtros: Vista, Moneda, Marca, País, Indicador, etc. */
+        .top-filter-card label,
+        .top-filter-card label p,
+        .top-filter-card div[data-testid="stWidgetLabel"],
+        .top-filter-card div[data-testid="stWidgetLabel"] p,
+        div[data-testid="stWidgetLabel"],
+        div[data-testid="stWidgetLabel"] p {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            opacity: 1 !important;
+            font-weight: 900 !important;
+        }
+
+        /* Radio buttons: Moneda local / Pesos mexicanos */
+        .top-filter-card div[role="radiogroup"] label,
+        .top-filter-card div[role="radiogroup"] p,
+        .top-filter-card div[role="radiogroup"] span,
+        .top-filter-card div[data-baseweb="radio"] label,
+        .top-filter-card div[data-baseweb="radio"] p,
+        .top-filter-card div[data-baseweb="radio"] span {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            opacity: 1 !important;
+            font-weight: 800 !important;
+        }
+
+        /* Selectbox y campos */
+        .top-filter-card div[data-baseweb="select"] > div,
+        div[data-baseweb="select"] > div,
+        input,
+        textarea,
+        select {
+            background-color: #0b1220 !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            border: 1.5px solid rgba(219,234,254,0.70) !important;
+            opacity: 1 !important;
+        }
+
+        .top-filter-card div[data-baseweb="select"] span,
+        .top-filter-card div[data-baseweb="select"] div,
+        .top-filter-card div[data-baseweb="select"] input,
+        div[data-baseweb="select"] span,
+        div[data-baseweb="select"] div,
+        div[data-baseweb="select"] input {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            opacity: 1 !important;
+            font-weight: 800 !important;
+        }
+
+        .top-filter-card div[data-baseweb="select"] svg,
+        div[data-baseweb="select"] svg {
+            fill: #ffffff !important;
+            color: #ffffff !important;
+            opacity: 1 !important;
+        }
+
+        /* Menú desplegable abierto */
+        div[role="listbox"],
+        ul[role="listbox"] {
+            background-color: #0b1220 !important;
+            color: #ffffff !important;
+            border: 1px solid rgba(219,234,254,0.50) !important;
+        }
+
+        div[role="option"],
+        li[role="option"] {
+            background-color: #0b1220 !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        div[role="option"]:hover,
+        li[role="option"]:hover {
+            background-color: #1e293b !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        /* Botones: mejor contraste que el azul claro con texto blanco */
+        div.stButton > button,
+        div[data-testid="stDownloadButton"] > button,
+        .top-filter-card div.stButton > button {
+            background: var(--dark-button-bg) !important;
+            color: var(--dark-button-text) !important;
+            -webkit-text-fill-color: var(--dark-button-text) !important;
+            border: 1px solid var(--dark-button-bg) !important;
+            opacity: 1 !important;
+            font-weight: 900 !important;
+        }
+
+        div.stButton > button p,
+        div.stButton > button span,
+        div[data-testid="stDownloadButton"] > button p,
+        div[data-testid="stDownloadButton"] > button span,
+        .top-filter-card div.stButton > button p,
+        .top-filter-card div.stButton > button span {
+            color: var(--dark-button-text) !important;
+            -webkit-text-fill-color: var(--dark-button-text) !important;
+            opacity: 1 !important;
+            font-weight: 900 !important;
+        }
+
+        div.stButton > button:hover,
+        div[data-testid="stDownloadButton"] > button:hover {
+            background: #facc15 !important;
+            color: #082567 !important;
+            -webkit-text-fill-color: #082567 !important;
+            border-color: #facc15 !important;
+        }
+
+        /* Pastilla unidad seleccionada */
+        .unidad-seleccionada-pill {
+            background: var(--dark-button-bg) !important;
+            color: var(--dark-button-text) !important;
+            -webkit-text-fill-color: var(--dark-button-text) !important;
+            border: 1px solid var(--dark-button-bg) !important;
+            opacity: 1 !important;
+            font-weight: 900 !important;
+        }
+
+        /* Comentarios */
+        .comentario-amplio {
+            background: rgba(30,41,59,0.98) !important;
+            color: #ffffff !important;
+            border-left-color: var(--dark-accent) !important;
+            box-shadow: 0 10px 26px rgba(0,0,0,0.38) !important;
+        }
+
+        .comentario-amplio,
+        .comentario-amplio-texto,
+        .comentario-amplio strong {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            opacity: 1 !important;
+        }
+
+        .comentario-amplio-titulo {
+            background: var(--dark-button-bg) !important;
+            color: var(--dark-button-text) !important;
+            -webkit-text-fill-color: var(--dark-button-text) !important;
+            opacity: 1 !important;
+        }
+
+        /* Dataframes / tablas en modo oscuro */
+        div[data-testid="stDataFrame"] *,
+        div[data-testid="stTable"] * {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        /* Plotly: los textos azul oscuro se pierden en fondo oscuro.
+           Se agrega borde claro sin cambiar el color base de la gráfica. */
+        div[data-testid="stPlotlyChart"] svg text {
+            paint-order: stroke !important;
+            stroke: rgba(255,255,255,0.92) !important;
+            stroke-width: 2.2px !important;
+            stroke-linejoin: round !important;
+        }
+
+        /* Leyendas y etiquetas Plotly con más legibilidad */
+        div[data-testid="stPlotlyChart"] .legend text,
+        div[data-testid="stPlotlyChart"] .pielabel,
+        div[data-testid="stPlotlyChart"] .xtick text,
+        div[data-testid="stPlotlyChart"] .ytick text,
+        div[data-testid="stPlotlyChart"] .gtitle,
+        div[data-testid="stPlotlyChart"] .annotation-text {
+            opacity: 1 !important;
+        }
+
+        /* Cards de entrada */
+        .unidad-card {
+            background: rgba(17,24,39,0.96) !important;
+            border-color: var(--dark-border) !important;
+            color: #ffffff !important;
+        }
+
+        .unidad-card * {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            opacity: 1 !important;
+        }
+
+        /* Métricas */
+        .kpi-value {
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+        }
+
+        /* Evita que temas/extensiones vuelvan transparentes los textos */
+        button,
+        button *,
+        label,
+        label *,
+        input,
+        textarea {
+            opacity: 1 !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
