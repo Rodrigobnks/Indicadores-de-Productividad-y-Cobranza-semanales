@@ -733,101 +733,99 @@ st.markdown(
 
 # ============================================================
 # FIX VISUAL PARA NAVEGADORES / TRADUCCIÓN / MODO OSCURO
+# Mantiene el formato original de fuentes y grosores.
+# Solo fuerza visibilidad/color para evitar textos blancos en algunas computadoras.
 # ============================================================
-st.markdown("""
-<style>
-html, body, .stApp, [data-testid="stAppViewContainer"] {
-    color: #061a40 !important;
-    -webkit-text-fill-color: #061a40 !important;
-    opacity: 1 !important;
-    filter: none !important;
-}
-h1, h2, h3, h4, h5, h6, p, span, div, label {
-    opacity: 1 !important;
-    visibility: visible !important;
-    text-shadow: none !important;
-}
-label,
-[data-testid="stWidgetLabel"],
-[data-testid="stWidgetLabel"] p,
-[data-testid="stWidgetLabel"] span,
-.stSelectbox label,
-.stRadio label,
-.stNumberInput label,
-.stTextInput label,
-.stMultiSelect label {
-    color: #082567 !important;
-    -webkit-text-fill-color: #082567 !important;
-    font-weight: 900 !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-}
-div[data-baseweb="select"],
-div[data-baseweb="select"] *,
-div[data-baseweb="popover"],
-div[data-baseweb="popover"] *,
-div[role="listbox"],
-div[role="listbox"] * {
-    color: #061a40 !important;
-    -webkit-text-fill-color: #061a40 !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-}
-div[data-baseweb="select"] > div {
-    background-color: #ffffff !important;
-    border: 1px solid rgba(8,37,103,0.35) !important;
-    box-shadow: none !important;
-}
-div[data-testid="stRadio"],
-div[data-testid="stRadio"] *,
-div[role="radiogroup"],
-div[role="radiogroup"] * {
-    color: #061a40 !important;
-    -webkit-text-fill-color: #061a40 !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-}
-div.stButton > button,
-div.stButton > button *,
-div[data-testid="stDownloadButton"] > button,
-div[data-testid="stDownloadButton"] > button * {
-    color: #ffffff !important;
-    -webkit-text-fill-color: #ffffff !important;
-    background-color: #082567 !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-    font-weight: 900 !important;
-}
-.kpi-card,
-.kpi-card *,
-.kpi-label,
-.kpi-value {
-    color: #061a40 !important;
-    -webkit-text-fill-color: #061a40 !important;
-    opacity: 1 !important;
-    visibility: visible !important;
-}
-.kpi-label {
-    color: #082567 !important;
-    -webkit-text-fill-color: #082567 !important;
-}
-.top-filter-title,
-.landing-title,
-.landing-subtitle,
-.unidad-seleccionada-pill,
-.unidad-name,
-.unidad-help {
-    opacity: 1 !important;
-    visibility: visible !important;
-}
-input, textarea, select {
-    color: #061a40 !important;
-    -webkit-text-fill-color: #061a40 !important;
-    background-color: #ffffff !important;
-    opacity: 1 !important;
-}
-</style>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <meta name="google" content="notranslate">
+    <style>
+    html, body, .stApp, [data-testid="stAppViewContainer"] {
+        color: #061a40 !important;
+        -webkit-text-fill-color: #061a40 !important;
+        opacity: 1 !important;
+        filter: none !important;
+    }
+
+    h1, h2, h3, h4, h5, h6,
+    p, span, div, label {
+        opacity: 1 !important;
+        visibility: visible !important;
+        text-shadow: none !important;
+    }
+
+    label,
+    [data-testid="stWidgetLabel"],
+    [data-testid="stWidgetLabel"] p,
+    [data-testid="stWidgetLabel"] span,
+    .stSelectbox label,
+    .stRadio label,
+    .stNumberInput label,
+    .stTextInput label,
+    .stMultiSelect label {
+        color: #082567 !important;
+        -webkit-text-fill-color: #082567 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+
+    div[data-baseweb="select"],
+    div[data-baseweb="select"] *,
+    div[data-baseweb="popover"],
+    div[data-baseweb="popover"] *,
+    div[role="listbox"],
+    div[role="listbox"] * {
+        color: #061a40 !important;
+        -webkit-text-fill-color: #061a40 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+
+    div[data-baseweb="select"] > div {
+        background-color: #ffffff !important;
+        border: 1px solid rgba(8,37,103,0.35) !important;
+        box-shadow: none !important;
+    }
+
+    div[data-testid="stRadio"],
+    div[data-testid="stRadio"] *,
+    div[role="radiogroup"],
+    div[role="radiogroup"] * {
+        color: #061a40 !important;
+        -webkit-text-fill-color: #061a40 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+
+    div.stButton > button,
+    div.stButton > button *,
+    div[data-testid="stDownloadButton"] > button,
+    div[data-testid="stDownloadButton"] > button * {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        background-color: #082567 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+
+    .kpi-card,
+    .kpi-card *,
+    .kpi-label,
+    .kpi-value {
+        opacity: 1 !important;
+        visibility: visible !important;
+    }
+
+    input, textarea, select {
+        color: #061a40 !important;
+        -webkit-text-fill-color: #061a40 !important;
+        background-color: #ffffff !important;
+        opacity: 1 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
 # ============================================================
 # FUNCIONES GENERALES
