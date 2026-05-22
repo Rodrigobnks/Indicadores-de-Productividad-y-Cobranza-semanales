@@ -5062,23 +5062,61 @@ st.markdown(
             -webkit-text-fill-color: #ffffff !important;
         }
 
-        /* Plotly: los textos azul oscuro se pierden en fondo oscuro.
-           Se agrega borde claro sin cambiar el color base de la gráfica. */
-        div[data-testid="stPlotlyChart"] svg text {
-            paint-order: stroke !important;
-            stroke: rgba(255,255,255,0.92) !important;
-            stroke-width: 2.2px !important;
-            stroke-linejoin: round !important;
-        }
+        /* ============================================================
+           Plotly en modo oscuro
+           Mejora contraste SOLO de textos que quedan sobre fondo oscuro.
+           No se cambia el modo claro.
+        ============================================================ */
 
-        /* Leyendas y etiquetas Plotly con más legibilidad */
-        div[data-testid="stPlotlyChart"] .legend text,
-        div[data-testid="stPlotlyChart"] .pielabel,
+        /* Ejes, títulos de ejes, leyendas y etiquetas externas de pie/dona. */
         div[data-testid="stPlotlyChart"] .xtick text,
         div[data-testid="stPlotlyChart"] .ytick text,
-        div[data-testid="stPlotlyChart"] .gtitle,
-        div[data-testid="stPlotlyChart"] .annotation-text {
+        div[data-testid="stPlotlyChart"] .g-xtitle text,
+        div[data-testid="stPlotlyChart"] .g-ytitle text,
+        div[data-testid="stPlotlyChart"] .legend text,
+        div[data-testid="stPlotlyChart"] .legendtext,
+        div[data-testid="stPlotlyChart"] .pielabel text,
+        div[data-testid="stPlotlyChart"] .slicetext {
+            fill: #ffffff !important;
+            color: #ffffff !important;
             opacity: 1 !important;
+            paint-order: stroke !important;
+            stroke: rgba(4, 10, 25, 0.95) !important;
+            stroke-width: 3px !important;
+            stroke-linejoin: round !important;
+            font-weight: 800 !important;
+        }
+
+        /* Números dentro de barras claras: se mantienen oscuros para que no se pierdan. */
+        div[data-testid="stPlotlyChart"] .bartext {
+            opacity: 1 !important;
+            paint-order: stroke !important;
+            stroke: rgba(255,255,255,0.95) !important;
+            stroke-width: 1.8px !important;
+            stroke-linejoin: round !important;
+            font-weight: 800 !important;
+        }
+
+        /* Anotaciones de variación en cajas blancas: texto azul oscuro legible. */
+        div[data-testid="stPlotlyChart"] .annotation text,
+        div[data-testid="stPlotlyChart"] .annotation-text {
+            fill: #082567 !important;
+            color: #082567 !important;
+            opacity: 1 !important;
+            paint-order: stroke !important;
+            stroke: rgba(255,255,255,0.98) !important;
+            stroke-width: 2px !important;
+            font-weight: 900 !important;
+        }
+
+        /* Trazos/textos de línea dentro de áreas blancas: conservar azul oscuro. */
+        div[data-testid="stPlotlyChart"] .scatterlayer text {
+            opacity: 1 !important;
+            paint-order: stroke !important;
+            stroke: rgba(255,255,255,0.98) !important;
+            stroke-width: 2px !important;
+            stroke-linejoin: round !important;
+            font-weight: 800 !important;
         }
 
         /* Cards de entrada */
