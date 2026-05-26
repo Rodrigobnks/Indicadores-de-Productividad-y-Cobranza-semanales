@@ -1239,7 +1239,7 @@ def texto_moneda_para_comentarios(modo_moneda: str | None = None, paises=None) -
     Texto de moneda para los recuadros de IA.
     - Si el tablero está en MXN, siempre dice pesos mexicanos.
     - Si está en moneda local y hay un solo país, muestra la moneda específica de ese país.
-    - Si hay varios países, indica que los importes están en la moneda local de cada país.
+    - Si hay varios países, muestra el detalle de moneda por país.
     """
     if modo_moneda is None:
         modo_moneda = st.session_state.get("modo_moneda_superior", "Moneda local")
@@ -1275,14 +1275,14 @@ def texto_moneda_para_comentarios(modo_moneda: str | None = None, paises=None) -
         pais = paises_unicos[0]
         return f"{nombre_moneda_local_pais(pais)} de {pais}"
 
-    if 1 < len(paises_unicos) <= 4:
+    if len(paises_unicos) > 1:
         detalle = "; ".join([
             f"{pais}: {nombre_moneda_local_pais(pais)}"
             for pais in paises_unicos
         ])
         return f"moneda local de cada país ({detalle})"
 
-    return "moneda local de cada país"
+    return "moneda local"
 
 
 def limpiar_datos(df: pd.DataFrame) -> pd.DataFrame:
@@ -1673,7 +1673,7 @@ def mostrar_boton_comentario(clave: str, texto: str):
     Muestra el comentario de forma automática y dentro del flujo normal de la página.
     Ya no usa botón ni session_state, por lo que el comentario se recalcula en cada cambio
     de filtro, país, marca, moneda o variable seleccionada.
-    Además agrega una etiqueta de moneda en todos los recuadros de IA.
+    Además agrega la moneda dentro del texto del comentario y como etiqueta visible.
     """
     if texto is None or str(texto).strip() == "":
         return
@@ -1683,7 +1683,11 @@ def mostrar_boton_comentario(clave: str, texto: str):
     st.markdown(
         '<div class="comentario-amplio">'
         '<div class="comentario-amplio-titulo">Comentario</div>'
-        '<div class="comentario-amplio-texto">' + comentario_seguro + '</div>'
+        '<div class="comentario-amplio-texto">'
+        + comentario_seguro
+        + '<br><br><strong>Moneda de los importes:</strong> '
+        + moneda_segura
+        + '</div>'
         '<div class="comentario-moneda">Moneda: ' + moneda_segura + '</div>'
         '</div>',
         unsafe_allow_html=True
@@ -3678,9 +3682,11 @@ def abrir_modal_resumen_pais(
         st.caption(f"Filtros aplicados: {filtros_texto}")
 
         st.markdown("### Lectura ejecutiva generada por IA")
-        comentario_seguro = html.escape(str(comentario_resumen)).replace("\n", "<br><br>")
+        comentario_seguro = html.escape(str(comentario_resumen)).replace("
+", "<br><br>")
+        moneda_segura = html.escape(texto_moneda_para_comentarios(modo_moneda))
         st.markdown(
-            f'<div class="modal-resumen-card">{comentario_seguro}</div>',
+            f'<div class="modal-resumen-card">{comentario_seguro}<br><br><strong>Moneda de los importes:</strong> {moneda_segura}</div>',
             unsafe_allow_html=True
         )
 
