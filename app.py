@@ -1187,7 +1187,7 @@ def aplicar_tipo_cambio_mxn(df_base: pd.DataFrame, modo_moneda: str) -> pd.DataF
 
 
 def etiqueta_moneda(modo_moneda: str) -> str:
-    return "MXN" if modo_moneda == "Pesos mexicanos" else "Moneda local"
+    return "Pesos mexicanos (MXN)" if modo_moneda == "Pesos mexicanos" else "Moneda local"
 
 
 def limpiar_datos(df: pd.DataFrame) -> pd.DataFrame:
@@ -2658,19 +2658,33 @@ def estilo_ultimas_5_cobranza(tabla):
     return tabla.style.apply(pintar, axis=None)
 
 
-def grafica_cumplimiento(evol, col_cump):
+def grafica_cumplimiento(evol, col_cump, modo_moneda=None):
     df_tmp = evol.copy().sort_values(
         ["Año", "Semana del año"] if "Año" in evol.columns else ["Semana del año"]
     ).reset_index(drop=True)
 
+    if df_tmp.empty:
+        return go.Figure()
+
     # Asegura que se grafique TODO el histórico que llegue a evol_cobranza.
     # Gris = % de Cumplimiento real.
     # Azul = complemento o diferencia necesaria para llegar al % de cumplimiento de la mejor semana.
+    df_tmp[col_cump] = pd.to_numeric(df_tmp[col_cump], errors="coerce")
     mejor_cump = df_tmp[col_cump].max()
     df_tmp["Dif % Mejor Semana"] = (mejor_cump - df_tmp[col_cump]).clip(lower=0)
     df_tmp["Texto Dif % Mejor Semana"] = df_tmp["Dif % Mejor Semana"].apply(
         lambda x: formato_pct(x, 2, False) if pd.notna(x) and x > 0 else ""
     )
+
+    # Detecta la mejor semana para resaltarla con contorno dorado.
+    idx_mejor = df_tmp[col_cump].idxmax() if df_tmp[col_cump].notna().any() else None
+    colores_borde = ["rgba(0,0,0,0)" for _ in range(len(df_tmp))]
+    anchos_borde = [0 for _ in range(len(df_tmp))]
+
+    if idx_mejor is not None and pd.notna(idx_mejor):
+        posicion_mejor = int(idx_mejor)
+        colores_borde[posicion_mejor] = "#d9c322"
+        anchos_borde[posicion_mejor] = 4
 
     fig = go.Figure()
 
@@ -2679,7 +2693,10 @@ def grafica_cumplimiento(evol, col_cump):
             x=df_tmp["Etiqueta semana"],
             y=df_tmp[col_cump],
             name="% Cumplimiento",
-            marker_color="#d9d9d9",
+            marker=dict(
+                color="#d9d9d9",
+                line=dict(color=colores_borde, width=anchos_borde)
+            ),
             text=df_tmp[col_cump].apply(lambda x: formato_pct(x, 2, False)),
             textposition="inside",
             textangle=-90,
@@ -2699,7 +2716,10 @@ def grafica_cumplimiento(evol, col_cump):
             x=df_tmp["Etiqueta semana"],
             y=df_tmp["Dif % Mejor Semana"],
             name="Dif % Mejor Semana",
-            marker_color="#1f77b4",
+            marker=dict(
+                color="#1f77b4",
+                line=dict(color=colores_borde, width=anchos_borde)
+            ),
             text=df_tmp["Texto Dif % Mejor Semana"],
             textposition="inside",
             textangle=-90,
@@ -2714,7 +2734,26 @@ def grafica_cumplimiento(evol, col_cump):
         )
     )
 
-    y_max = max(1, mejor_cump * 1.08 if pd.notna(mejor_cump) else 1)
+    if idx_mejor is not None and pd.notna(idx_mejor):
+        fila_mejor = df_tmp.loc[idx_mejor]
+        fig.add_annotation(
+            x=fila_mejor["Etiqueta semana"],
+            y=mejor_cump,
+            text="<b>Mejor semana</b>",
+            showarrow=True,
+            arrowhead=2,
+            arrowsize=1,
+            arrowwidth=1.5,
+            arrowcolor="#d9c322",
+            yshift=28,
+            font=dict(color="#082567", size=12),
+            bgcolor="rgba(255,255,255,0.92)",
+            bordercolor="#d9c322",
+            borderwidth=1,
+            borderpad=4
+        )
+
+    y_max = max(1, mejor_cump * 1.12 if pd.notna(mejor_cump) else 1)
 
     fig.update_layout(
         height=420,
@@ -2725,7 +2764,7 @@ def grafica_cumplimiento(evol, col_cump):
         xaxis_title=None,
         yaxis_title="% Cumplimiento y Dif % Mejor Semana",
         legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="left", x=0),
-        margin=dict(t=35, b=85, l=45, r=20),
+        margin=dict(t=62, b=85, l=45, r=20),
         paper_bgcolor="rgba(255,255,255,0)",
         plot_bgcolor="rgba(255,255,255,1)",
         font=dict(color="#082567", size=11),
@@ -2741,7 +2780,73 @@ def grafica_cumplimiento(evol, col_cump):
 
     return fig
 
-def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
+def _siguiente_semana_etiqueta(fila_ultima):
+    semana = int(fila_ultima["Semana del año"])
+    anio = int(fila_ultima["Año"]) if "Año" in fila_ultima.index and pd.notna(fila_ultima["Año"]) else None
+
+    if semana >= 52:
+        semana_sig = 1
+        anio_sig = anio + 1 if anio is not None else None
+    else:
+        semana_sig = semana + 1
+        anio_sig = anio
+
+    if anio_sig is not None:
+        return f"{anio_sig} S{semana_sig} Pronóstico", semana_sig, anio_sig
+
+    return f"S{semana_sig} Pronóstico", semana_sig, None
+
+
+def _pronostico_siguiente_semana(serie):
+    """
+    Pronóstico simple y estable para tablero ejecutivo:
+    último valor + promedio de las últimas variaciones disponibles.
+    Si hay muy poco histórico, conserva el último dato.
+    """
+    s = pd.to_numeric(serie, errors="coerce").dropna().astype(float)
+
+    if s.empty:
+        return np.nan
+
+    ultimo = float(s.iloc[-1])
+
+    if len(s) < 3:
+        return max(0, ultimo)
+
+    difs = s.diff().dropna().tail(3)
+
+    if difs.empty:
+        return max(0, ultimo)
+
+    pronostico = ultimo + float(difs.mean())
+    return max(0, pronostico)
+
+
+def _html_recuadro_pronostico(ultima, pronostico_cuota, pronostico_pago, col_cuota, col_pago, moneda_nombre):
+    cumplimiento_ult = np.nan
+    cumplimiento_proy = np.nan
+
+    if float(ultima[col_cuota]) != 0:
+        cumplimiento_ult = float(ultima[col_pago]) / float(ultima[col_cuota])
+
+    if float(pronostico_cuota) != 0:
+        cumplimiento_proy = float(pronostico_pago) / float(pronostico_cuota)
+
+    return (
+        "<b>Última semana</b><br>"
+        f"Semana: {ultima['Etiqueta semana']}<br>"
+        f"Cuota: {formato_numero(ultima[col_cuota])}<br>"
+        f"Pago: {formato_numero(ultima[col_pago])}<br>"
+        f"Cumplimiento: {formato_pct(cumplimiento_ult, 2, False)}<br><br>"
+        "<b>Pronóstico próxima semana</b><br>"
+        f"Cuota: {formato_numero(pronostico_cuota)}<br>"
+        f"Pago: {formato_numero(pronostico_pago)}<br>"
+        f"Cumplimiento: {formato_pct(cumplimiento_proy, 2, False)}<br><br>"
+        f"<b>Moneda:</b> {moneda_nombre}"
+    )
+
+
+def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor, modo_moneda="Moneda local"):
     df_tmp = evol.copy().sort_values(
         ["Año", "Semana del año"] if "Año" in evol.columns else ["Semana del año"]
     ).reset_index(drop=True)
@@ -2754,7 +2859,28 @@ def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
         if col and col in df_tmp.columns:
             df_tmp[col] = pd.to_numeric(df_tmp[col], errors="coerce").fillna(0)
 
-    # Valores de referencia
+    moneda_nombre = etiqueta_moneda(modo_moneda)
+
+    # Pronóstico de la siguiente semana.
+    ultima = df_tmp.iloc[-1].copy()
+    etiqueta_pronostico, semana_sig, anio_sig = _siguiente_semana_etiqueta(ultima)
+    pronostico_cuota = _pronostico_siguiente_semana(df_tmp[col_cuota])
+    pronostico_pago = _pronostico_siguiente_semana(df_tmp[col_pago])
+
+    fila_pronostico = ultima.copy()
+    fila_pronostico["Etiqueta semana"] = etiqueta_pronostico
+    fila_pronostico["Semana del año"] = semana_sig
+    if "Año" in df_tmp.columns and anio_sig is not None:
+        fila_pronostico["Año"] = anio_sig
+    fila_pronostico[col_cuota] = pronostico_cuota
+    fila_pronostico[col_pago] = pronostico_pago
+
+    df_plot = pd.concat([df_tmp, pd.DataFrame([fila_pronostico])], ignore_index=True)
+    df_plot["_posicion_x"] = range(len(df_plot))
+    df_plot["_tipo_dato"] = "Real"
+    df_plot.loc[df_plot.index[-1], "_tipo_dato"] = "Pronóstico"
+
+    # Valores de referencia con datos reales, no con el pronóstico.
     mejor_valor = (
         df_tmp[col_mejor].max()
         if col_mejor and col_mejor in df_tmp.columns
@@ -2767,15 +2893,14 @@ def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
         else df_tmp[col_pago].min()
     )
 
-    # Si Peor Semana viene en 0, no debe forzar la escala al piso.
     valores_reales = pd.concat([
-        df_tmp[col_cuota],
-        df_tmp[col_pago]
+        df_plot[col_cuota],
+        df_plot[col_pago]
     ], ignore_index=True)
 
     valores_reales = valores_reales[
-        valores_reales.notna() & 
-        np.isfinite(valores_reales) & 
+        valores_reales.notna() &
+        np.isfinite(valores_reales) &
         (valores_reales > 0)
     ]
 
@@ -2792,12 +2917,11 @@ def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
             margen_sup = y_max_real * 0.18
         else:
             margen_inf = rango * 0.25
-            margen_sup = rango * 0.25
+            margen_sup = rango * 0.34
 
         y_min = max(0, y_min_real - margen_inf)
         y_max = y_max_real + margen_sup
 
-    # Solo incluir la línea de mejor semana en escala si está cerca del rango real
     if mejor_valor > 0:
         y_max = max(y_max, mejor_valor * 1.05)
 
@@ -2805,18 +2929,19 @@ def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
 
     fig.add_trace(
         go.Scatter(
-            x=df_tmp["Etiqueta semana"],
-            y=[mejor_valor] * len(df_tmp),
+            x=df_plot["_posicion_x"],
+            y=[mejor_valor] * len(df_plot),
             mode="lines",
             name="Mejor Semana",
             line=dict(color="#ff7f0e", width=2, dash="dot"),
-            hovertemplate="<b>Mejor Semana:</b> %{y:,.0f}<extra></extra>"
+            hovertemplate=f"<b>Mejor Semana:</b> %{{y:,.0f}}<br><b>Moneda:</b> {moneda_nombre}<extra></extra>"
         )
     )
 
+    # Tramo real de cuota
     fig.add_trace(
         go.Scatter(
-            x=df_tmp["Etiqueta semana"],
+            x=df_tmp.index,
             y=df_tmp[col_cuota],
             mode="lines+markers+text",
             name="Cuota total",
@@ -2826,13 +2951,43 @@ def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
             textposition="top center",
             textfont=dict(color="#1d4ed8", size=10),
             cliponaxis=False,
-            hovertemplate="<b>Semana:</b> %{x}<br><b>Cuota total:</b> %{y:,.0f}<extra></extra>"
+            hovertemplate=(
+                "<b>Semana:</b> %{customdata}<br>"
+                "<b>Cuota total:</b> %{y:,.0f}<br>"
+                f"<b>Moneda:</b> {moneda_nombre}"
+                "<extra></extra>"
+            ),
+            customdata=df_tmp["Etiqueta semana"]
         )
     )
 
+    # Tramo pronosticado de cuota: une última semana real con pronóstico.
     fig.add_trace(
         go.Scatter(
-            x=df_tmp["Etiqueta semana"],
+            x=[len(df_tmp) - 1, len(df_tmp)],
+            y=[df_tmp.iloc[-1][col_cuota], pronostico_cuota],
+            mode="lines+markers+text",
+            name="Cuota pronóstico",
+            line=dict(color="black", width=2.5, dash="dash"),
+            marker=dict(color="black", size=[6, 9], symbol=["circle", "diamond"]),
+            text=["", formato_millones(pronostico_cuota)],
+            textposition="top center",
+            textfont=dict(color="#1d4ed8", size=10),
+            cliponaxis=False,
+            hovertemplate=(
+                "<b>Semana:</b> %{customdata}<br>"
+                "<b>Cuota total:</b> %{y:,.0f}<br>"
+                f"<b>Moneda:</b> {moneda_nombre}"
+                "<extra></extra>"
+            ),
+            customdata=[df_tmp.iloc[-1]["Etiqueta semana"], etiqueta_pronostico]
+        )
+    )
+
+    # Tramo real de pago
+    fig.add_trace(
+        go.Scatter(
+            x=df_tmp.index,
             y=df_tmp[col_pago],
             mode="lines+markers+text",
             name="Pago total",
@@ -2842,26 +2997,103 @@ def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
             textposition="bottom center",
             textfont=dict(color="#00b050", size=10),
             cliponaxis=False,
-            hovertemplate="<b>Semana:</b> %{x}<br><b>Pago total:</b> %{y:,.0f}<extra></extra>"
+            hovertemplate=(
+                "<b>Semana:</b> %{customdata}<br>"
+                "<b>Pago total:</b> %{y:,.0f}<br>"
+                f"<b>Moneda:</b> {moneda_nombre}"
+                "<extra></extra>"
+            ),
+            customdata=df_tmp["Etiqueta semana"]
         )
     )
 
-    # La línea peor semana se muestra, pero si vale 0 no se deja que aplaste la escala.
+    # Tramo pronosticado de pago: une última semana real con pronóstico.
     fig.add_trace(
         go.Scatter(
-            x=df_tmp["Etiqueta semana"],
-            y=[peor_valor] * len(df_tmp),
+            x=[len(df_tmp) - 1, len(df_tmp)],
+            y=[df_tmp.iloc[-1][col_pago], pronostico_pago],
+            mode="lines+markers+text",
+            name="Pago pronóstico",
+            line=dict(color="#00b050", width=2.5, dash="dash"),
+            marker=dict(color="#00b050", size=[6, 9], symbol=["circle", "diamond"]),
+            text=["", formato_millones(pronostico_pago)],
+            textposition="bottom center",
+            textfont=dict(color="#00b050", size=10),
+            cliponaxis=False,
+            hovertemplate=(
+                "<b>Semana:</b> %{customdata}<br>"
+                "<b>Pago total:</b> %{y:,.0f}<br>"
+                f"<b>Moneda:</b> {moneda_nombre}"
+                "<extra></extra>"
+            ),
+            customdata=[df_tmp.iloc[-1]["Etiqueta semana"], etiqueta_pronostico]
+        )
+    )
+
+    fig.add_trace(
+        go.Scatter(
+            x=df_plot["_posicion_x"],
+            y=[peor_valor] * len(df_plot),
             mode="lines",
             name="Peor Semana",
             line=dict(color="red", width=2, dash="dot"),
-            hovertemplate="<b>Peor Semana:</b> %{y:,.0f}<extra></extra>"
+            hovertemplate=f"<b>Peor Semana:</b> %{{y:,.0f}}<br><b>Moneda:</b> {moneda_nombre}<extra></extra>"
         )
     )
 
+    # Línea vertical divisoria entre última semana real y pronóstico.
+    posicion_division = len(df_tmp) - 0.5
+    fig.add_shape(
+        type="line",
+        x0=posicion_division,
+        x1=posicion_division,
+        y0=y_min,
+        y1=y_max,
+        line=dict(color="#082567", width=2, dash="dash")
+    )
+
+    fig.add_annotation(
+        x=posicion_division,
+        y=y_max,
+        text="<b>Pronóstico</b>",
+        showarrow=False,
+        yshift=14,
+        font=dict(color="#082567", size=12),
+        bgcolor="rgba(255,255,255,0.92)",
+        bordercolor="#082567",
+        borderwidth=1,
+        borderpad=4
+    )
+
+    # Recuadro derecho con última semana y pronóstico.
+    fig.add_annotation(
+        xref="paper",
+        yref="paper",
+        x=1.01,
+        y=0.96,
+        xanchor="left",
+        yanchor="top",
+        align="left",
+        text=_html_recuadro_pronostico(
+            ultima=ultima,
+            pronostico_cuota=pronostico_cuota,
+            pronostico_pago=pronostico_pago,
+            col_cuota=col_cuota,
+            col_pago=col_pago,
+            moneda_nombre=moneda_nombre
+        ),
+        showarrow=False,
+        font=dict(color="#082567", size=11),
+        bgcolor="rgba(255,255,255,0.96)",
+        bordercolor="#d9c322",
+        borderwidth=2,
+        borderpad=10
+    )
+
     fig.update_layout(
-        height=500,
+        height=540,
         xaxis_title=None,
-        yaxis_title=None,
+        yaxis_title=f"Monto ({moneda_nombre})",
         legend=dict(
             orientation="h",
             yanchor="bottom",
@@ -2869,7 +3101,7 @@ def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
             xanchor="left",
             x=0
         ),
-        margin=dict(t=45, b=85, l=65, r=25),
+        margin=dict(t=55, b=85, l=65, r=285),
         paper_bgcolor="rgba(255,255,255,0)",
         plot_bgcolor="rgba(255,255,255,1)",
         font=dict(color="#082567", size=11),
@@ -2878,9 +3110,9 @@ def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor):
         xaxis=dict(
             gridcolor="rgba(148,163,184,0.25)",
             tickangle=-45,
-            type="category",
-            categoryorder="array",
-            categoryarray=df_tmp["Etiqueta semana"].tolist(),
+            tickmode="array",
+            tickvals=df_plot["_posicion_x"].tolist(),
+            ticktext=df_plot["Etiqueta semana"].tolist(),
             fixedrange=True
         ),
         yaxis=dict(
@@ -4654,7 +4886,7 @@ else:
                         comentario_cobranza_cumplimiento(evol_cobranza, col_cump)
                     )
 
-                    fig_cump = grafica_cumplimiento(evol_cobranza, col_cump)
+                    fig_cump = grafica_cumplimiento(evol_cobranza, col_cump, modo_moneda)
                     st.plotly_chart(fig_cump, use_container_width=True)
 
                     # ------------------------------
@@ -4671,7 +4903,8 @@ else:
                         col_cuota=col_cuota,
                         col_pago=col_pago,
                         col_mejor=col_mejor_final,
-                        col_peor=col_peor_final
+                        col_peor=col_peor_final,
+                        modo_moneda=modo_moneda
                     )
                     st.plotly_chart(fig_cp, use_container_width=True)
 
