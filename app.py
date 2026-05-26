@@ -136,6 +136,27 @@ TIPO_CAMBIO_MXN = {
     "NIC": 0.5145,
 }
 
+
+MONEDAS_LOCALES_PAIS = {
+    "COLOMBIA": "peso colombiano (COP)",
+    "CO": "peso colombiano (COP)",
+    "GUATEMALA": "quetzal guatemalteco (GTQ)",
+    "GT": "quetzal guatemalteco (GTQ)",
+    "PERU": "sol peruano (PEN)",
+    "PERÚ": "sol peruano (PEN)",
+    "PE": "sol peruano (PEN)",
+    "MEXICO": "peso mexicano (MXN)",
+    "MÉXICO": "peso mexicano (MXN)",
+    "MX": "peso mexicano (MXN)",
+    "EL SALVADOR": "dólar estadounidense (USD)",
+    "SALVADOR": "dólar estadounidense (USD)",
+    "S": "dólar estadounidense (USD)",
+    "HONDURAS": "lempira hondureña (HNL)",
+    "HO": "lempira hondureña (HNL)",
+    "NICARAGUA": "córdoba nicaragüense (NIO)",
+    "NIC": "córdoba nicaragüense (NIO)",
+}
+
 COLUMNAS_NO_MONETARIAS_EXACTAS = {
     "Clientes Totales",
     "Clientes al corriente",
@@ -493,6 +514,17 @@ st.markdown(
     }
 
     .comentario-amplio strong {
+        font-weight: 900;
+    }
+
+    .comentario-moneda {
+        display: inline-block;
+        margin-top: 12px;
+        padding: 6px 12px;
+        border-radius: 999px;
+        background: rgba(8,37,103,0.08);
+        color: #082567;
+        font-size: 15px;
         font-weight: 900;
     }
 
@@ -1035,6 +1067,12 @@ st.markdown(
             -webkit-text-fill-color: #082567 !important;
         }
 
+        .comentario-moneda {
+            background: rgba(219,234,254,0.16) !important;
+            color: #f8fafc !important;
+            -webkit-text-fill-color: #f8fafc !important;
+        }
+
         .kpi-delta-positive {
             color: #bbf7d0 !important;
             background: rgba(22,101,52,0.45) !important;
@@ -1188,6 +1226,63 @@ def aplicar_tipo_cambio_mxn(df_base: pd.DataFrame, modo_moneda: str) -> pd.DataF
 
 def etiqueta_moneda(modo_moneda: str) -> str:
     return "Pesos mexicanos (MXN)" if modo_moneda == "Pesos mexicanos" else "Moneda local"
+
+
+def nombre_moneda_local_pais(pais) -> str:
+    """Devuelve el nombre de la moneda local de un país para mostrarlo en comentarios."""
+    pais_norm = normalizar_texto_tc(pais)
+    return MONEDAS_LOCALES_PAIS.get(pais_norm, "moneda local")
+
+
+def texto_moneda_para_comentarios(modo_moneda: str | None = None, paises=None) -> str:
+    """
+    Texto de moneda para los recuadros de IA.
+    - Si el tablero está en MXN, siempre dice pesos mexicanos.
+    - Si está en moneda local y hay un solo país, muestra la moneda específica de ese país.
+    - Si hay varios países, indica que los importes están en la moneda local de cada país.
+    """
+    if modo_moneda is None:
+        modo_moneda = st.session_state.get("modo_moneda_superior", "Moneda local")
+
+    if modo_moneda == "Pesos mexicanos":
+        return "pesos mexicanos (MXN)"
+
+    if paises is None:
+        pais_sel = st.session_state.get("filtro_superior_País", "Todos")
+        if pais_sel and pais_sel != "Todos":
+            paises = [pais_sel]
+        else:
+            paises = st.session_state.get("paises_comentarios_actuales", [])
+
+    paises_limpios = []
+    if paises is not None:
+        for pais in list(paises):
+            if pd.notna(pais):
+                texto = str(pais).strip()
+                if texto and texto.lower() not in ["nan", "none", "todos"]:
+                    paises_limpios.append(texto)
+
+    # Deduplica conservando orden
+    vistos = set()
+    paises_unicos = []
+    for pais in paises_limpios:
+        clave = normalizar_texto_tc(pais)
+        if clave not in vistos:
+            vistos.add(clave)
+            paises_unicos.append(pais)
+
+    if len(paises_unicos) == 1:
+        pais = paises_unicos[0]
+        return f"{nombre_moneda_local_pais(pais)} de {pais}"
+
+    if 1 < len(paises_unicos) <= 4:
+        detalle = "; ".join([
+            f"{pais}: {nombre_moneda_local_pais(pais)}"
+            for pais in paises_unicos
+        ])
+        return f"moneda local de cada país ({detalle})"
+
+    return "moneda local de cada país"
 
 
 def limpiar_datos(df: pd.DataFrame) -> pd.DataFrame:
@@ -1578,15 +1673,18 @@ def mostrar_boton_comentario(clave: str, texto: str):
     Muestra el comentario de forma automática y dentro del flujo normal de la página.
     Ya no usa botón ni session_state, por lo que el comentario se recalcula en cada cambio
     de filtro, país, marca, moneda o variable seleccionada.
+    Además agrega una etiqueta de moneda en todos los recuadros de IA.
     """
     if texto is None or str(texto).strip() == "":
         return
 
     comentario_seguro = html.escape(str(texto)).replace("\n", "<br>")
+    moneda_segura = html.escape(texto_moneda_para_comentarios())
     st.markdown(
         '<div class="comentario-amplio">'
         '<div class="comentario-amplio-titulo">Comentario</div>'
         '<div class="comentario-amplio-texto">' + comentario_seguro + '</div>'
+        '<div class="comentario-moneda">Moneda: ' + moneda_segura + '</div>'
         '</div>',
         unsafe_allow_html=True
     )
@@ -3278,7 +3376,7 @@ def generar_resumen_ia_paises(
             "La recomendación es validar la carga histórica para identificar avances, retrocesos y áreas de oportunidad."
         )
 
-    moneda_txt = etiqueta_moneda(modo_moneda)
+    moneda_txt = texto_moneda_para_comentarios(modo_moneda)
     col_dato = f"Dato sem {semana_actual}"
 
     positivos = resumen[resumen["Variación vs sem ant"] > 0].copy() if "Variación vs sem ant" in resumen.columns else pd.DataFrame()
@@ -3572,7 +3670,7 @@ def abrir_modal_resumen_pais(
             f"""
             <span class="modal-resumen-meta">Semana actual: {semana_actual}</span>
             <span class="modal-resumen-meta">Comparativo: {semana_anterior_txt}</span>
-            <span class="modal-resumen-meta">Moneda: {etiqueta_moneda(modo_moneda)}</span>
+            <span class="modal-resumen-meta">Moneda: {texto_moneda_para_comentarios(modo_moneda)}</span>
             """,
             unsafe_allow_html=True
         )
@@ -4164,6 +4262,19 @@ df_filtrado_original = aplicar_filtros_base(
     semanas_sel=[],
     filtros=filtros
 )
+
+# Contexto de países para que todos los comentarios de IA indiquen la moneda local correcta.
+if "País" in df_filtrado_original.columns:
+    st.session_state["paises_comentarios_actuales"] = (
+        df_filtrado_original["País"]
+        .dropna()
+        .astype(str)
+        .str.strip()
+        .unique()
+        .tolist()
+    )
+else:
+    st.session_state["paises_comentarios_actuales"] = []
 
 if df_filtrado_original.empty:
     st.warning("No hay datos de Cartera con los filtros seleccionados.")
