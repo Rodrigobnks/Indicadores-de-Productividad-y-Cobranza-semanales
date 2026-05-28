@@ -4228,6 +4228,335 @@ if abrir_resumen_pais_click:
         semana_anterior_cobranza=semana_anterior_cob_modal,
     )
 
+
+
+# ============================================================
+# GRÁFICA DE BURBUJAS: CLIENTES, FALTAS Y DÍAS DE ATRASO
+# ============================================================
+def detectar_columna_dias_atraso(df_base: pd.DataFrame) -> str | None:
+    """Detecta automáticamente la columna de días de atraso si existe en la base."""
+    posibles = [
+        "Promedio días de atraso",
+        "Promedio dias de atraso",
+        "Promedio de días de atraso",
+        "Promedio de dias de atraso",
+        "Dias de atraso promedio",
+        "Días de atraso promedio",
+        "dias_de_atraso",
+        "Dias de atraso",
+        "Días de atraso",
+        "Días de Atraso",
+        "Dias de Atraso",
+    ]
+    return detectar_columna(posibles, df_base.columns)
+
+
+def preparar_datos_burbujas_faltas(df_base: pd.DataFrame, nivel_estructura: str) -> tuple[pd.DataFrame, str | None]:
+    """
+    Construye la base de la burbuja por semana y estructura.
+    X = Clientes Totales.
+    Y = Faltas / Clientes Totales.
+    Tamaño = Faltas.
+    Color = Promedio de días de atraso si la columna existe.
+    """
+    if df_base is None or df_base.empty:
+        return pd.DataFrame(), None
+
+    if nivel_estructura not in df_base.columns:
+        return pd.DataFrame(), None
+
+    columnas_necesarias = ["Semana del año", nivel_estructura, "Clientes Totales", "Faltas"]
+    faltantes = [c for c in columnas_necesarias if c not in df_base.columns]
+    if faltantes:
+        return pd.DataFrame(), None
+
+    df_tmp = df_base.copy()
+    col_dias = detectar_columna_dias_atraso(df_tmp)
+
+    df_tmp["Semana del año"] = pd.to_numeric(df_tmp["Semana del año"], errors="coerce")
+    df_tmp["Clientes Totales"] = pd.to_numeric(df_tmp["Clientes Totales"], errors="coerce").fillna(0)
+    df_tmp["Faltas"] = pd.to_numeric(df_tmp["Faltas"], errors="coerce").fillna(0)
+
+    if col_dias:
+        df_tmp[col_dias] = pd.to_numeric(df_tmp[col_dias], errors="coerce")
+    else:
+        col_dias = "Promedio días de atraso"
+        df_tmp[col_dias] = np.nan
+
+    df_tmp = df_tmp.dropna(subset=["Semana del año", nivel_estructura]).copy()
+
+    if df_tmp.empty:
+        return pd.DataFrame(), col_dias
+
+    columnas_group = ["Semana del año", nivel_estructura]
+    if "Año" in df_tmp.columns:
+        df_tmp["Año"] = pd.to_numeric(df_tmp["Año"], errors="coerce")
+        columnas_group = ["Año", "Semana del año", nivel_estructura]
+
+    # Para días de atraso se usa promedio ponderado por faltas cuando es posible.
+    df_tmp["_dias_x_faltas"] = df_tmp[col_dias].fillna(0) * df_tmp["Faltas"].fillna(0)
+
+    agrupado = (
+        df_tmp
+        .groupby(columnas_group, dropna=False)
+        .agg(
+            **{
+                "Clientes Totales": ("Clientes Totales", "sum"),
+                "Faltas": ("Faltas", "sum"),
+                "_dias_x_faltas": ("_dias_x_faltas", "sum"),
+            }
+        )
+        .reset_index()
+    )
+
+    faltas_por_grupo = (
+        df_tmp
+        .groupby(columnas_group, dropna=False)["Faltas"]
+        .sum()
+        .reset_index(name="_faltas_para_promedio")
+    )
+    agrupado = agrupado.merge(faltas_por_grupo, on=columnas_group, how="left")
+
+    agrupado["Porcentaje de Faltas"] = np.where(
+        agrupado["Clientes Totales"] == 0,
+        0,
+        agrupado["Faltas"] / agrupado["Clientes Totales"]
+    )
+
+    agrupado["Promedio días de atraso"] = np.where(
+        agrupado["_faltas_para_promedio"] == 0,
+        np.nan,
+        agrupado["_dias_x_faltas"] / agrupado["_faltas_para_promedio"]
+    )
+
+    # Si la base no trae días, se deja en 0 para que Plotly pueda graficar sin tronar.
+    agrupado["Promedio días de atraso"] = agrupado["Promedio días de atraso"].fillna(0)
+
+    if "Año" in agrupado.columns:
+        agrupado = agrupado.sort_values(["Año", "Semana del año", nivel_estructura])
+        agrupado["Etiqueta semana"] = agrupado.apply(
+            lambda r: f"{int(r['Año'])} - S{int(r['Semana del año'])}" if pd.notna(r["Año"]) else f"S{int(r['Semana del año'])}",
+            axis=1
+        )
+    else:
+        agrupado = agrupado.sort_values(["Semana del año", nivel_estructura])
+        agrupado["Etiqueta semana"] = agrupado["Semana del año"].apply(lambda x: f"S{int(x)}")
+
+    agrupado["Estructura"] = agrupado[nivel_estructura].astype(str)
+    agrupado["Faltas texto"] = agrupado["Faltas"].apply(lambda x: f"{x:,.0f}")
+    agrupado["Clientes texto"] = agrupado["Clientes Totales"].apply(lambda x: f"{x:,.0f}")
+    agrupado["% Faltas texto"] = agrupado["Porcentaje de Faltas"].apply(lambda x: f"{x:.1%}")
+    agrupado["Días atraso texto"] = agrupado["Promedio días de atraso"].apply(lambda x: f"{x:,.1f}")
+
+    return agrupado, col_dias
+
+
+def generar_comentario_burbujas_faltas(df_burbujas: pd.DataFrame, nivel_estructura: str, semana_visible: str | None = None) -> str:
+    if df_burbujas is None or df_burbujas.empty:
+        return "No hay información suficiente para comentar la matriz de clientes, faltas y días de atraso."
+
+    df_tmp = df_burbujas.copy()
+    if semana_visible is not None:
+        df_sem = df_tmp[df_tmp["Etiqueta semana"] == semana_visible].copy()
+        if df_sem.empty:
+            df_sem = df_tmp.copy()
+    else:
+        semana_visible = df_tmp["Etiqueta semana"].iloc[-1]
+        df_sem = df_tmp[df_tmp["Etiqueta semana"] == semana_visible].copy()
+
+    if df_sem.empty:
+        return "No hay registros válidos para comentar la gráfica de burbujas."
+
+    med_clientes = df_sem["Clientes Totales"].median()
+    med_pct = df_sem["Porcentaje de Faltas"].median()
+
+    zona_critica = df_sem[
+        (df_sem["Clientes Totales"] >= med_clientes) &
+        (df_sem["Porcentaje de Faltas"] >= med_pct)
+    ].copy()
+
+    if not zona_critica.empty:
+        foco = zona_critica.sort_values(["Faltas", "Porcentaje de Faltas"], ascending=False).iloc[0]
+        lectura_foco = (
+            f"El principal foco operativo está en {foco['Estructura']}, porque combina una base alta de clientes "
+            f"({foco['Clientes Totales']:,.0f}) con un porcentaje elevado de faltas ({foco['Porcentaje de Faltas']:.1%}) "
+            f"y {foco['Faltas']:,.0f} faltas."
+        )
+    else:
+        foco = df_sem.sort_values(["Porcentaje de Faltas", "Faltas"], ascending=False).iloc[0]
+        lectura_foco = (
+            f"El mayor foco por proporción de faltas está en {foco['Estructura']}, con "
+            f"{foco['Porcentaje de Faltas']:.1%} y {foco['Faltas']:,.0f} faltas."
+        )
+
+    mayor_clientes = df_sem.sort_values("Clientes Totales", ascending=False).iloc[0]
+    menor_faltas_rel = df_sem.sort_values("Porcentaje de Faltas", ascending=True).iloc[0]
+
+    comentario = (
+        f"En {semana_visible}, la lectura por {nivel_estructura} separa cuatro cuadrantes: estructuras con más clientes y más faltas, "
+        f"más clientes y menos faltas, menos clientes y más faltas, y menos clientes y menos faltas. {lectura_foco} "
+        f"La estructura con mayor volumen de clientes es {mayor_clientes['Estructura']} "
+        f"({mayor_clientes['Clientes Totales']:,.0f} clientes). "
+        f"Como referencia positiva, {menor_faltas_rel['Estructura']} registra el menor porcentaje de faltas "
+        f"({menor_faltas_rel['Porcentaje de Faltas']:.1%})."
+    )
+
+    if "Promedio días de atraso" in df_sem.columns:
+        mayor_atraso = df_sem.sort_values("Promedio días de atraso", ascending=False).iloc[0]
+        if mayor_atraso["Promedio días de atraso"] > 0:
+            comentario += (
+                f" En días de atraso, el valor más alto corresponde a {mayor_atraso['Estructura']}, "
+                f"con {mayor_atraso['Promedio días de atraso']:,.1f} días promedio."
+            )
+
+    return comentario
+
+
+def crear_grafica_burbujas_faltas(
+    df_burbujas: pd.DataFrame,
+    nivel_estructura: str,
+    modo_interactivo: bool,
+    semana_estatica: str | None = None,
+) -> tuple[go.Figure, dict]:
+    if df_burbujas is None or df_burbujas.empty:
+        return go.Figure(), {"displayModeBar": False, "responsive": True}
+
+    df_plot = df_burbujas.copy()
+    df_plot["Tamaño burbuja"] = pd.to_numeric(df_plot["Faltas"], errors="coerce").fillna(0)
+    df_plot["Tamaño burbuja"] = df_plot["Tamaño burbuja"].clip(lower=1)
+
+    max_x = max(float(df_plot["Clientes Totales"].max()), 1)
+    max_y = max(float(df_plot["Porcentaje de Faltas"].max()), 0.01)
+
+    if modo_interactivo:
+        fig = px.scatter(
+            df_plot,
+            x="Clientes Totales",
+            y="Porcentaje de Faltas",
+            size="Tamaño burbuja",
+            color="Promedio días de atraso",
+            animation_frame="Etiqueta semana",
+            animation_group="Estructura",
+            hover_name="Estructura",
+            text="Estructura",
+            size_max=64,
+            range_x=[0, max_x * 1.12],
+            range_y=[0, min(max_y * 1.18, 1.05)],
+            labels={
+                "Clientes Totales": "Clientes Totales",
+                "Porcentaje de Faltas": "Porcentaje de Faltas",
+                "Promedio días de atraso": "Prom. días atraso",
+                "Tamaño burbuja": "Faltas",
+            },
+            custom_data=["Clientes texto", "Faltas texto", "% Faltas texto", "Días atraso texto"],
+        )
+    else:
+        if semana_estatica is None:
+            semana_estatica = df_plot["Etiqueta semana"].iloc[-1]
+        df_sem = df_plot[df_plot["Etiqueta semana"] == semana_estatica].copy()
+        if df_sem.empty:
+            df_sem = df_plot[df_plot["Etiqueta semana"] == df_plot["Etiqueta semana"].iloc[-1]].copy()
+            semana_estatica = df_sem["Etiqueta semana"].iloc[-1]
+
+        fig = px.scatter(
+            df_sem,
+            x="Clientes Totales",
+            y="Porcentaje de Faltas",
+            size="Tamaño burbuja",
+            color="Promedio días de atraso",
+            hover_name="Estructura",
+            text="Estructura",
+            size_max=64,
+            range_x=[0, max_x * 1.12],
+            range_y=[0, min(max_y * 1.18, 1.05)],
+            labels={
+                "Clientes Totales": "Clientes Totales",
+                "Porcentaje de Faltas": "Porcentaje de Faltas",
+                "Promedio días de atraso": "Prom. días atraso",
+                "Tamaño burbuja": "Faltas",
+            },
+            custom_data=["Clientes texto", "Faltas texto", "% Faltas texto", "Días atraso texto"],
+        )
+
+    med_x = float(df_plot["Clientes Totales"].median())
+    med_y = float(df_plot["Porcentaje de Faltas"].median())
+
+    fig.update_traces(
+        textposition="middle center",
+        textfont=dict(size=12, color="#111827"),
+        marker=dict(line=dict(color="white", width=2), opacity=0.78),
+        hovertemplate=(
+            "<b>%{hovertext}</b><br>"
+            "Clientes Totales: %{customdata[0]}<br>"
+            "Faltas: %{customdata[1]}<br>"
+            "% Faltas: %{customdata[2]}<br>"
+            "Prom. días atraso: %{customdata[3]}"
+            "<extra></extra>"
+        ),
+    )
+
+    fig.add_vline(x=med_x, line_width=2.5, line_color="rgba(80,80,80,0.80)")
+    fig.add_hline(y=med_y, line_width=2.5, line_color="rgba(80,80,80,0.80)")
+
+    # Etiquetas de cuadrantes, en el mismo sentido de la imagen de referencia.
+    fig.add_annotation(
+        x=max_x * 0.04, y=min(max_y * 1.08, 0.98), text="<b><i>Más faltas y menos clientes</i></b>",
+        showarrow=False, xanchor="left", yanchor="top", font=dict(size=16, color="#082567")
+    )
+    fig.add_annotation(
+        x=max_x * 1.08, y=min(max_y * 1.08, 0.98), text="<b><i>Más clientes y más faltas</i></b>",
+        showarrow=False, xanchor="right", yanchor="top", font=dict(size=16, color="#082567")
+    )
+    fig.add_annotation(
+        x=max_x * 0.04, y=0, text="<b><i>Menos clientes y menos faltas</i></b>",
+        showarrow=False, xanchor="left", yanchor="bottom", font=dict(size=16, color="#082567")
+    )
+    fig.add_annotation(
+        x=max_x * 1.08, y=0, text="<b><i>Más clientes y menos faltas</i></b>",
+        showarrow=False, xanchor="right", yanchor="bottom", font=dict(size=16, color="#082567")
+    )
+
+    titulo = f"Clientes Totales, Porcentaje de Faltas y Promedio de días de atraso por {nivel_estructura}"
+    fig.update_layout(
+        title=dict(text=titulo, x=0.0, xanchor="left", font=dict(size=16, color="#111827")),
+        height=650,
+        margin=dict(t=70, b=60, l=70, r=55),
+        paper_bgcolor="rgba(255,255,255,0)",
+        plot_bgcolor="rgba(255,255,255,1)",
+        font=dict(color="#111827", size=12),
+        coloraxis_colorbar=dict(title="Prom.<br>días<br>atraso"),
+        legend_title=None,
+        dragmode="pan" if modo_interactivo else False,
+    )
+
+    fig.update_xaxes(
+        title="Clientes Totales",
+        showgrid=False,
+        zeroline=False,
+        fixedrange=not modo_interactivo,
+        tickformat=",.0f",
+    )
+    fig.update_yaxes(
+        title="Porcentaje de Faltas",
+        showgrid=False,
+        zeroline=False,
+        fixedrange=not modo_interactivo,
+        tickformat=".0%",
+    )
+
+    if modo_interactivo and fig.layout.updatemenus:
+        fig.layout.updatemenus[0].buttons[0].args[1]["frame"] = {"duration": 850, "redraw": True}
+        fig.layout.updatemenus[0].buttons[0].args[1]["transition"] = {"duration": 450}
+
+    config = {
+        "displayModeBar": True if modo_interactivo else False,
+        "scrollZoom": True if modo_interactivo else False,
+        "doubleClick": "reset" if modo_interactivo else False,
+        "responsive": True,
+    }
+
+    return fig, config
+
 # ============================================================
 # CONTROL DE DATOS
 # ============================================================
@@ -4570,6 +4899,97 @@ if modulo_seleccionado == "Cartera":
                         use_container_width=True,
                         hide_index=True
                     )
+
+
+    # ============================================================
+    # BURBUJAS: CLIENTES, FALTAS Y DÍAS DE ATRASO
+    # ============================================================
+    st.subheader("Mapa de clientes, faltas y días de atraso")
+
+    niveles_burbujas = [
+        c for c in ["País", "Subdireccion", "Zona", "Sucursal", "Ruta"]
+        if c in df_filtrado_original.columns
+    ]
+
+    if not niveles_burbujas:
+        st.info("No hay columnas de estructura disponibles para construir la gráfica de burbujas.")
+    elif not all(c in df_filtrado_original.columns for c in ["Clientes Totales", "Faltas", "Semana del año"]):
+        st.info("Para esta gráfica se necesitan las columnas 'Clientes Totales', 'Faltas' y 'Semana del año'.")
+    else:
+        st.markdown(
+            """
+            <div class="top-bottom-opciones-card">
+                <div class="top-bottom-opciones-title">Opciones de matriz de clientes y faltas</div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        col_nivel_burbuja, col_modo_burbuja, col_semana_burbuja = st.columns([1.35, 1.35, 1.35], gap="large")
+
+        with col_nivel_burbuja:
+            nivel_burbujas = st.selectbox(
+                "Estructura",
+                options=niveles_burbujas,
+                index=niveles_burbujas.index("Sucursal") if "Sucursal" in niveles_burbujas else 0,
+                key="nivel_burbujas_faltas"
+            )
+
+        datos_burbujas, col_dias_atraso_detectada = preparar_datos_burbujas_faltas(
+            df_base=df_filtrado_original,
+            nivel_estructura=nivel_burbujas
+        )
+
+        if datos_burbujas.empty:
+            st.info("No hay datos suficientes para construir la gráfica de burbujas con los filtros actuales.")
+        else:
+            with col_modo_burbuja:
+                modo_interactivo_burbujas = st.toggle(
+                    "Activar movimiento, zoom y desplazamiento por fechas",
+                    value=False,
+                    key="modo_interactivo_burbujas_faltas"
+                )
+
+            semanas_burbujas = datos_burbujas["Etiqueta semana"].dropna().drop_duplicates().tolist()
+
+            with col_semana_burbuja:
+                if modo_interactivo_burbujas:
+                    st.caption("Usa ▶ en la gráfica para animar semanas. Puedes arrastrar y hacer zoom.")
+                    semana_burbuja_estatica = semanas_burbujas[-1]
+                else:
+                    semana_burbuja_estatica = st.selectbox(
+                        "Semana",
+                        options=semanas_burbujas,
+                        index=len(semanas_burbujas) - 1,
+                        key="semana_burbujas_faltas"
+                    )
+
+            fig_burbujas, config_burbujas = crear_grafica_burbujas_faltas(
+                df_burbujas=datos_burbujas,
+                nivel_estructura=nivel_burbujas,
+                modo_interactivo=modo_interactivo_burbujas,
+                semana_estatica=semana_burbuja_estatica,
+            )
+
+            st.plotly_chart(
+                fig_burbujas,
+                use_container_width=True,
+                config=config_burbujas
+            )
+
+            comentario_burbujas = generar_comentario_burbujas_faltas(
+                df_burbujas=datos_burbujas,
+                nivel_estructura=nivel_burbujas,
+                semana_visible=None if modo_interactivo_burbujas else semana_burbuja_estatica
+            )
+            mostrar_boton_comentario("burbujas_clientes_faltas", comentario_burbujas)
+
+            if col_dias_atraso_detectada is None:
+                st.caption(
+                    "Nota: no se detectó una columna de días de atraso; la gráfica se generó con clientes, faltas y porcentaje de faltas."
+                )
+            else:
+                st.caption(f"Días de atraso detectados desde la columna: {col_dias_atraso_detectada}.")
 
 
     # ============================================================
