@@ -3,6 +3,7 @@ import os
 import base64
 import html
 from pathlib import Path
+from io import BytesIO
 
 import numpy as np
 import pandas as pd
@@ -1541,6 +1542,38 @@ def formato_eje_compacto(valor):
     return f"{valor:,.0f}"
 
 
+
+def dataframe_a_xlsx_bytes(df_exportar: pd.DataFrame, nombre_hoja: str = "Datos") -> bytes:
+    """Convierte una tabla a archivo Excel en memoria para descarga."""
+    salida = BytesIO()
+    with pd.ExcelWriter(salida, engine="openpyxl") as writer:
+        df_tmp = df_exportar.copy()
+        # Excel no acepta zonas horarias en datetimes.
+        for col in df_tmp.columns:
+            if pd.api.types.is_datetime64_any_dtype(df_tmp[col]):
+                try:
+                    df_tmp[col] = df_tmp[col].dt.tz_localize(None)
+                except Exception:
+                    pass
+        df_tmp.to_excel(writer, index=False, sheet_name=str(nombre_hoja)[:31] or "Datos")
+        ws = writer.sheets[str(nombre_hoja)[:31] or "Datos"]
+        for idx, col in enumerate(df_tmp.columns, start=1):
+            max_len = max([len(str(col))] + [len(str(v)) for v in df_tmp[col].head(200).fillna("").tolist()])
+            ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = min(max(max_len + 2, 12), 45)
+    return salida.getvalue()
+
+
+def boton_descargar_xlsx(df_exportar: pd.DataFrame, etiqueta: str, nombre_archivo: str, key: str | None = None):
+    if df_exportar is None or df_exportar.empty:
+        return
+    st.download_button(
+        label=etiqueta,
+        data=dataframe_a_xlsx_bytes(df_exportar, "Datos"),
+        file_name=nombre_archivo if nombre_archivo.lower().endswith(".xlsx") else f"{nombre_archivo}.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key=key,
+    )
+
 def crear_grafica_evolucion_fija(
     evol: pd.DataFrame,
     indicador_grafica: str,
@@ -2595,6 +2628,12 @@ def mostrar_cuadro_resumen_movimientos(movimientos: pd.DataFrame):
             tabla_imp,
             use_container_width=True,
             hide_index=True
+        )
+        boton_descargar_xlsx(
+            tabla_imp,
+            "Descargar improductivas por marca XLSX",
+            "improductivas_por_marca.xlsx",
+            key="descargar_improductivas_marca_xlsx"
         )
 
 
@@ -3877,6 +3916,12 @@ def abrir_modal_resumen_pais(
             hide_index=True,
             height=altura_tabla_resumen(tabla_resumen_fmt, max_height=360)
         )
+        boton_descargar_xlsx(
+            resumen,
+            "Descargar detalle del resumen XLSX",
+            f"detalle_resumen_semana_{semana_actual}.xlsx",
+            key="descargar_resumen_cartera_xlsx"
+        )
 
     if resumen_cobranza is not None and not resumen_cobranza.empty:
         st.markdown("### Resumen de cobranza")
@@ -3906,6 +3951,12 @@ def abrir_modal_resumen_pais(
             use_container_width=True,
             hide_index=True,
             height=altura_tabla_resumen(tabla_cobranza_fmt, max_height=300)
+        )
+        boton_descargar_xlsx(
+            resumen_cobranza,
+            "Descargar resumen de cobranza XLSX",
+            f"resumen_cobranza_semana_{semana_actual_cobranza}.xlsx",
+            key="descargar_resumen_cobranza_xlsx"
         )
     else:
         st.info("No se encontró información de Cobranza para incluirla en este resumen.")
@@ -4319,8 +4370,9 @@ texto_indicaciones = (
 if es_unidad_latam(unidad_negocio_seleccionada):
     texto_indicaciones += (
         "En <b>Presico LATAM</b>, si seleccionas <b>Pesos mexicanos</b>, puedes ver las variables "
-        "consolidadas con <b>todos</b> los países; si seleccionas <b>Moneda local</b>, "
-        "la visualización se hace <b>solo por país</b> para no mezclar monedas. "
+        "consolidadas con <b>todos</b> los países y consultar el <b>Top / Bottom por país</b>; "
+        "si seleccionas <b>Moneda local</b>, la visualización se hace <b>solo por país</b> "
+        "para no mezclar monedas. "
     )
 
 texto_indicaciones += (
@@ -4347,7 +4399,7 @@ if unidad_negocio_seleccionada is not None:
 
 base_para_filtros = filtrar_por_diccionario(df, filtros)
 
-col_unidad_actual, col_modulo, col_moneda, col_marca, col_pais, col_resumen_pais, col_cambiar = st.columns([1.10, 0.90, 1.10, 0.95, 0.95, 1.10, 0.85])
+col_unidad_actual, col_modulo, col_moneda, col_marca, col_pais, col_secundarias, col_resumen_pais, col_cambiar = st.columns([1.10, 0.90, 1.10, 0.95, 0.95, 1.15, 1.10, 0.85])
 
 with col_unidad_actual:
     if unidad_negocio_seleccionada is not None:
@@ -4450,6 +4502,21 @@ for col_filtro, col_streamlit in [("Marca", col_marca), ("País", col_pais)]:
         with col_streamlit:
             st.caption(f"Sin columna {col_filtro}")
 
+# Filtro adicional solo para Cartera: permite quitar coordinadoras secundarias de todos los KPIs,
+# tablas, gráficas y análisis de la sección de cartera.
+excluir_secundarias_cartera = False
+with col_secundarias:
+    if modulo_seleccionado == "Cartera" and "Tipo Coordinadora" in df.columns:
+        opcion_secundarias = st.selectbox(
+            "Coordinadoras",
+            options=["Todas", "Sin secundarias"],
+            index=0,
+            key="filtro_coordinadoras_secundarias"
+        )
+        excluir_secundarias_cartera = opcion_secundarias == "Sin secundarias"
+    else:
+        st.caption("")
+
 # IMPORTANTE:
 # El resumen se abre solo en el clic de este botón.
 # No se deja guardado como estado persistente, porque si el usuario lo cierra
@@ -4478,6 +4545,9 @@ st.markdown('</div>', unsafe_allow_html=True)
 df = aplicar_tipo_cambio_mxn(df, modo_moneda)
 if df_cobranza is not None:
     df_cobranza = aplicar_tipo_cambio_mxn(df_cobranza, modo_moneda)
+
+if modulo_seleccionado == "Cartera" and excluir_secundarias_cartera and "Tipo Coordinadora" in df.columns:
+    df = df[df["Tipo Coordinadora"].astype(str).str.strip().str.lower() != "secundaria"].copy()
 
 # Siempre se usan todos los indicadores disponibles; ya no hay selector múltiple.
 indicadores_sel = indicadores_disponibles.copy()
@@ -5167,6 +5237,12 @@ if modulo_seleccionado == "Cartera":
                         estilo_matriz_desplazamiento(matriz_movimientos),
                         use_container_width=True
                     )
+                    boton_descargar_xlsx(
+                        matriz_movimientos.reset_index() if hasattr(matriz_movimientos, "reset_index") else matriz_movimientos,
+                        "Descargar matriz de movimientos XLSX",
+                        f"matriz_movimientos_semana_{semana_origen}_{semana_destino}.xlsx",
+                        key="descargar_matriz_movimientos_xlsx"
+                    )
 
                 with col_resumen_mov:
                     mostrar_cuadro_resumen_movimientos(movimientos)
@@ -5242,6 +5318,12 @@ if modulo_seleccionado == "Cartera":
                             detalle_movimientos[columnas_detalle],
                             use_container_width=True,
                             hide_index=True
+                        )
+                        boton_descargar_xlsx(
+                            detalle_movimientos[columnas_detalle],
+                            "Descargar detalle de coordinadoras XLSX",
+                            f"detalle_coordinadoras_desplazadas_{semana_origen}_{semana_destino}.xlsx",
+                            key="descargar_detalle_coordinadoras_xlsx"
                         )
 
 
@@ -5427,13 +5509,11 @@ if modulo_seleccionado == "Cartera":
                     hide_index=True
                 )
 
-                csv_top_bottom = tabla_top_bottom.to_csv(index=False).encode("utf-8-sig")
-
-                st.download_button(
-                    label="Descargar Top / Bottom",
-                    data=csv_top_bottom,
-                    file_name=f"top_bottom_{nivel_top_bottom}_semana_{semana_actual}.csv",
-                    mime="text/csv"
+                boton_descargar_xlsx(
+                    tabla_top_bottom,
+                    "Descargar Top / Bottom XLSX",
+                    f"top_bottom_{nivel_top_bottom}_semana_{semana_actual}.xlsx",
+                    key="descargar_top_bottom_xlsx"
                 )
 
     mostrar_boton_comentario("top_bottom", comentario_top_bottom)
@@ -5467,13 +5547,11 @@ if modulo_seleccionado == "Cartera":
     # ============================================================
     # DESCARGA
     # ============================================================
-    csv = detalle.to_csv(index=False).encode("utf-8-sig")
-
-    st.download_button(
-        label="Descargar detalle agrupado",
-        data=csv,
-        file_name=f"detalle_{nivel}_semana_{semana_actual}.csv",
-        mime="text/csv"
+    boton_descargar_xlsx(
+        detalle,
+        "Descargar detalle agrupado XLSX",
+        f"detalle_{nivel}_semana_{semana_actual}.xlsx",
+        key="descargar_detalle_agrupado_xlsx"
     )
 
 else:
@@ -5612,6 +5690,12 @@ else:
                         use_container_width=True,
                         hide_index=True
                     )
+                    boton_descargar_xlsx(
+                        tabla_detalle_cob,
+                        "Descargar detalle de cobranza XLSX",
+                        "detalle_cobranza.xlsx",
+                        key="descargar_detalle_cobranza_xlsx"
+                    )
 
                     # ------------------------------
                     # Gráfica cumplimiento
@@ -5678,6 +5762,12 @@ else:
                         use_container_width=True,
                         hide_index=True
                     )
+                    boton_descargar_xlsx(
+                        tabla_ultimas_5_cobranza,
+                        "Descargar últimas 5 semanas XLSX",
+                        "ultimas_5_semanas_cobranza.xlsx",
+                        key="descargar_ultimas_5_cobranza_xlsx"
+                    )
 
 
                     # ------------------------------
@@ -5718,6 +5808,11 @@ else:
                         else:
                             col_tabla_top_bottom_cob, col_opciones_top_bottom_cob = st.columns([2.2, 1])
 
+                            # La estructura ya no se muestra como filtro lateral. Se define automáticamente:
+                            # si existe País, se usa País; si no, se toma el primer nivel disponible.
+                            nivel_top_bottom_cobranza = "País" if "País" in niveles_top_bottom_cobranza else niveles_top_bottom_cobranza[0]
+                            cantidad_top_bottom_cobranza = 30
+
                             with col_opciones_top_bottom_cob:
                                 tipo_top_bottom_cobranza = st.radio(
                                     "Top / Bottom",
@@ -5726,27 +5821,11 @@ else:
                                     key="tipo_top_bottom_cobranza"
                                 )
 
-                                nivel_top_bottom_cobranza = st.selectbox(
-                                    "Estructura",
-                                    options=niveles_top_bottom_cobranza,
-                                    index=0,
-                                    key="nivel_top_bottom_cobranza"
-                                )
-
                                 variable_top_bottom_cobranza = st.selectbox(
                                     "Variable de cobranza",
                                     options=variables_top_bottom_cobranza,
                                     index=0,
                                     key="variable_top_bottom_cobranza"
-                                )
-
-                                cantidad_top_bottom_cobranza = st.number_input(
-                                    "Cantidad",
-                                    min_value=3,
-                                    max_value=30,
-                                    value=10,
-                                    step=1,
-                                    key="cantidad_top_bottom_cobranza"
                                 )
 
                             tabla_top_bottom_cobranza = construir_top_bottom_cobranza(
@@ -5778,13 +5857,11 @@ else:
                                         hide_index=True
                                     )
 
-                                    csv_top_bottom_cobranza = tabla_top_bottom_cobranza.to_csv(index=False).encode("utf-8-sig")
-
-                                    st.download_button(
-                                        label="Descargar Top / Bottom Cobranza",
-                                        data=csv_top_bottom_cobranza,
-                                        file_name=f"top_bottom_cobranza_{nivel_top_bottom_cobranza}_semana_{semana_top_bottom_cobranza}.csv",
-                                        mime="text/csv"
+                                    boton_descargar_xlsx(
+                                        tabla_top_bottom_cobranza,
+                                        "Descargar Top / Bottom Cobranza XLSX",
+                                        f"top_bottom_cobranza_{nivel_top_bottom_cobranza}_semana_{semana_top_bottom_cobranza}.xlsx",
+                                        key="descargar_top_bottom_cobranza_xlsx"
                                     )
 
                             comentario_top_bottom_cobranza = generar_comentario_top_bottom_cobranza(
