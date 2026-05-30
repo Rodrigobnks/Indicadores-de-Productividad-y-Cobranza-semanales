@@ -4334,9 +4334,23 @@ with col_moneda:
     )
 
 # Marca y País quedan como únicas opciones de filtro dentro del tablero.
+# En LATAM, si ya hay un país seleccionado, Marca se limita a las marcas disponibles de ese país.
+pais_seleccionado_estado = st.session_state.get("filtro_superior_País")
 for col_filtro, col_streamlit in [("Marca", col_marca), ("País", col_pais)]:
     if col_filtro in df.columns:
         df_opciones = filtrar_por_diccionario(base_para_filtros, filtros, excluir_col=col_filtro)
+
+        if (
+            col_filtro == "Marca"
+            and es_latam
+            and pais_seleccionado_estado
+            and pais_seleccionado_estado not in ["Todos", "Sin datos"]
+            and "País" in df_opciones.columns
+        ):
+            df_opciones = df_opciones[
+                df_opciones["País"].astype(str).str.strip() == str(pais_seleccionado_estado).strip()
+            ]
+
         valores = sorted(df_opciones[col_filtro].dropna().astype(str).str.strip().unique())
 
         if col_filtro == "País" and es_latam and modo_moneda == "Moneda local":
