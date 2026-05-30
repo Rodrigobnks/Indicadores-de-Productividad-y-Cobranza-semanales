@@ -1648,7 +1648,6 @@ def mostrar_boton_comentario(clave: str, texto: str):
     comentario_seguro = html.escape(str(texto)).replace("\n", "<br>")
     st.markdown(
         '<div class="comentario-amplio">'
-        '<div class="comentario-amplio-titulo">Comentario</div>'
         '<div class="comentario-amplio-texto">' + comentario_seguro + '</div>'
         '</div>',
         unsafe_allow_html=True
@@ -4868,21 +4867,67 @@ if modulo_seleccionado == "Cartera":
 
                 with st.expander("Ver detalle de coordinadoras desplazadas", expanded=False):
                     detalle_movimientos = movimientos.copy()
-                    detalle_movimientos = detalle_movimientos.rename(columns={
-                        "_llave_coordinadora_marca": "Llave Coordinadora Marca",
-                        "coordinadora_id origen": "Coordinadora ID origen",
-                        "coordinadora_id destino": "Coordinadora ID destino",
-                        "País origen": "País origen",
-                        "País destino": "País destino",
-                        "Marca origen": "Marca origen",
-                        "Marca destino": "Marca destino",
-                    })
 
-                    st.dataframe(
-                        detalle_movimientos,
-                        use_container_width=True,
-                        hide_index=True
-                    )
+                    # Muestra únicamente coordinadoras que sí cambiaron de categoría
+                    # entre la semana anterior y la semana actual.
+                    # Esto elimina los registros que permanecen igual, que antes saturaban la tabla.
+                    detalle_movimientos = detalle_movimientos[
+                        detalle_movimientos["Semana anterior"].astype(str)
+                        != detalle_movimientos["Semana actual"].astype(str)
+                    ].copy()
+
+                    if detalle_movimientos.empty:
+                        st.info("No hubo coordinadoras desplazadas entre las semanas seleccionadas.")
+                    else:
+                        # Se consolida la identificación en una sola columna, usando origen cuando existe
+                        # y destino cuando se trata de coordinadoras nuevas.
+                        if "coordinadora_id origen" in detalle_movimientos.columns:
+                            detalle_movimientos["Coordinadora ID"] = detalle_movimientos["coordinadora_id origen"]
+                        else:
+                            detalle_movimientos["Coordinadora ID"] = np.nan
+
+                        if "coordinadora_id destino" in detalle_movimientos.columns:
+                            detalle_movimientos["Coordinadora ID"] = detalle_movimientos["Coordinadora ID"].fillna(
+                                detalle_movimientos["coordinadora_id destino"]
+                            )
+
+                        if "País origen" in detalle_movimientos.columns:
+                            detalle_movimientos["País"] = detalle_movimientos["País origen"]
+                        else:
+                            detalle_movimientos["País"] = np.nan
+
+                        if "País destino" in detalle_movimientos.columns:
+                            detalle_movimientos["País"] = detalle_movimientos["País"].fillna(
+                                detalle_movimientos["País destino"]
+                            )
+
+                        if "Marca origen" in detalle_movimientos.columns:
+                            detalle_movimientos["Marca"] = detalle_movimientos["Marca origen"]
+                        else:
+                            detalle_movimientos["Marca"] = np.nan
+
+                        if "Marca destino" in detalle_movimientos.columns:
+                            detalle_movimientos["Marca"] = detalle_movimientos["Marca"].fillna(
+                                detalle_movimientos["Marca destino"]
+                            )
+
+                        columnas_detalle = [
+                            "Coordinadora ID",
+                            "País",
+                            "Marca",
+                            "Semana anterior",
+                            "Semana actual",
+                        ]
+                        columnas_detalle = [
+                            c for c in columnas_detalle
+                            if c in detalle_movimientos.columns
+                        ]
+
+                        st.dataframe(
+                            detalle_movimientos[columnas_detalle],
+                            use_container_width=True,
+                            hide_index=True
+                        )
 
 
     # ============================================================
@@ -5886,6 +5931,47 @@ st.markdown(
             -webkit-text-fill-color: #082567 !important;
             border-left-color: #d9c322 !important;
         }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# AJUSTE FINAL: COMENTARIOS SIEMPRE LEGIBLES EN MODO CLARO FORZADO
+# Este bloque queda al final para evitar que reglas previas de modo oscuro
+# dejen el texto blanco sobre tarjetas azules claras.
+# ============================================================
+st.markdown(
+    """
+    <style>
+    .comentario-amplio,
+    .comentario-amplio *,
+    .comentario-amplio-texto,
+    .comentario-amplio-texto *,
+    .modal-resumen-card,
+    .modal-resumen-card *,
+    .resumen-pagina-card,
+    .resumen-pagina-card * {
+        background-color: transparent;
+        color: #082567 !important;
+        -webkit-text-fill-color: #082567 !important;
+        text-shadow: none !important;
+        opacity: 1 !important;
+    }
+
+    .comentario-amplio,
+    .modal-resumen-card,
+    .resumen-pagina-card {
+        background: #dbeafe !important;
+        border-left: 8px solid #d9c322 !important;
+        box-shadow: 0 8px 22px rgba(15,23,42,0.12) !important;
+    }
+
+    .comentario-amplio-texto {
+        font-weight: 800 !important;
+        line-height: 1.55 !important;
     }
     </style>
     """,
