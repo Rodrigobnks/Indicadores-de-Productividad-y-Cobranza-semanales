@@ -302,6 +302,68 @@ def aplicar_fondo_pagina(nombre_imagen: str):
 
 aplicar_fondo_pagina(NOMBRE_IMAGEN_FONDO)
 
+# ============================================================
+# VISTA PARA TELÉFONO
+# ============================================================
+if st.session_state.get("vista_telefono", False):
+    st.markdown(
+        """
+        <style>
+        /* Simula un ancho tipo iPhone en toda la aplicación sin tocar la lógica. */
+        [data-testid="stAppViewContainer"] > .main {
+            max-width: 430px !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+            border-left: 1px solid rgba(226,232,240,0.95) !important;
+            border-right: 1px solid rgba(226,232,240,0.95) !important;
+            box-shadow: 0 0 30px rgba(15,23,42,0.18) !important;
+            overflow-x: hidden !important;
+        }
+        .main .block-container {
+            max-width: 430px !important;
+            padding-left: 0.85rem !important;
+            padding-right: 0.85rem !important;
+        }
+        div[data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+            gap: 0.55rem !important;
+        }
+        div[data-testid="column"] {
+            min-width: 100% !important;
+            width: 100% !important;
+            flex: 1 1 100% !important;
+        }
+        .landing-title {
+            font-size: 30px !important;
+            line-height: 1.1 !important;
+        }
+        .landing-subtitle {
+            font-size: 15px !important;
+        }
+        .unidad-logo,
+        .unidad-logo-placeholder {
+            width: 190px !important;
+            height: 78px !important;
+        }
+        .top-filter-title,
+        h1, h2, h3 {
+            font-size: 26px !important;
+            line-height: 1.15 !important;
+        }
+        .comentario-amplio {
+            width: 100% !important;
+            max-width: 100% !important;
+            font-size: 15px !important;
+            padding: 14px 16px !important;
+        }
+        .kpi-value {
+            font-size: 26px !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
+
 st.markdown(
     """
     <style>
@@ -4114,6 +4176,13 @@ if unidades_negocio:
         unidad_guardada = None
 
     if unidad_guardada is None:
+        col_vista_tel, col_vista_tel_espacio = st.columns([0.22, 0.78])
+        with col_vista_tel:
+            texto_boton_tel = "Vista normal" if st.session_state.get("vista_telefono", False) else "Vista para teléfono"
+            if st.button(texto_boton_tel, key="btn_vista_telefono_inicio", use_container_width=True):
+                st.session_state["vista_telefono"] = not st.session_state.get("vista_telefono", False)
+                st.rerun()
+
         st.markdown(
             """
             <div class="landing-wrap">
@@ -4173,7 +4242,7 @@ else:
 st.markdown(
     """
     <div class="comentario-amplio" style="width:100%; max-width:100%; margin: 0 0 16px 0;">
-        Usa <b>Vista</b> para alternar entre Cartera y Cobranza. En <b>Cartera</b> los filtros de Marca y País ajustan los KPIs, tablas, movimientos y análisis de coordinadoras. En <b>Cobranza</b> los mismos filtros controlan la evolución histórica, el cumplimiento semanal y la comparación cuota vs pago. El botón <b>Resumen semana país</b> abre una página completa con la lectura ejecutiva del último corte; <b>Cambiar unidad</b> regresa a la selección inicial.
+        Usa <b>Vista</b> para alternar entre Cartera y Cobranza. En <b>Cartera</b> los filtros de Marca y País ajustan los KPIs, tablas, movimientos y análisis de coordinadoras. En <b>Cobranza</b> los mismos filtros controlan la evolución histórica, el cumplimiento semanal y la comparación cuota vs pago. En <b>Présico LATAM</b>, si seleccionas <b>Pesos mexicanos</b> puedes ver las variables consolidadas con <b>Todos</b> los países; si seleccionas <b>Moneda local</b>, la visualización se hace <b>solo por país</b> para no mezclar monedas. El botón <b>Resumen semana país</b> abre una página completa con la lectura ejecutiva del último corte; <b>Cambiar unidad</b> regresa a la selección inicial.
     </div>
     """,
     unsafe_allow_html=True
