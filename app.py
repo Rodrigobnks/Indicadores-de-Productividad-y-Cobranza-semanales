@@ -59,6 +59,7 @@ INDICADORES_BASE = [
     "Saldo Cartera",
     "Saldo en atraso",
     "Saldo PP",
+    "IP",
 ]
 
 POSIBLES_COLUMNAS_COBRANZA_CARTERA = [
@@ -142,6 +143,7 @@ COLUMNAS_NO_MONETARIAS_EXACTAS = {
     "Faltas",
     "Nunca Abonados",
     "Coordinadoras",
+    "IP",
 }
 
 TERMINOS_NO_MONETARIOS = [
@@ -1312,6 +1314,12 @@ def limpiar_datos(df: pd.DataFrame) -> pd.DataFrame:
         if c in df.columns:
             df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0)
 
+    # IP = Índice de Productividad. Se calcula como porcentaje base 0-100.
+    if "Clientes al corriente" in df.columns and "Clientes Totales" in df.columns:
+        clientes_corriente = pd.to_numeric(df["Clientes al corriente"], errors="coerce").fillna(0)
+        clientes_totales = pd.to_numeric(df["Clientes Totales"], errors="coerce").fillna(0)
+        df["IP"] = np.where(clientes_totales == 0, 0, (clientes_corriente / clientes_totales) * 100)
+
     if "Tipo Coordinadora" in df.columns:
         df["Tipo Coordinadora"] = df["Tipo Coordinadora"].fillna("NA")
         df["Tipo Coordinadora"] = df["Tipo Coordinadora"].replace({
@@ -1786,6 +1794,16 @@ def aplicar_filtros_cobranza_desde_cartera(
     return df_tmp
 
 
+def recalcular_ip_agregado(df_base: pd.DataFrame) -> pd.DataFrame:
+    """Recalcula IP a nivel agregado para evitar sumar porcentajes."""
+    df_tmp = df_base.copy()
+    if "Clientes al corriente" in df_tmp.columns and "Clientes Totales" in df_tmp.columns:
+        clientes_corriente = pd.to_numeric(df_tmp["Clientes al corriente"], errors="coerce").fillna(0)
+        clientes_totales = pd.to_numeric(df_tmp["Clientes Totales"], errors="coerce").fillna(0)
+        df_tmp["IP"] = np.where(clientes_totales == 0, 0, (clientes_corriente / clientes_totales) * 100)
+    return df_tmp
+
+
 # ============================================================
 # FUNCIONES CARTERA
 # ============================================================
@@ -1872,6 +1890,10 @@ def calcular_resumen_actual_vs_anterior(df_filtrado: pd.DataFrame, indicadores: 
     else:
         anterior = pd.Series(0, index=indicadores)
 
+    if "IP" in indicadores and "Clientes al corriente" in actual.index and "Clientes Totales" in actual.index:
+        actual["IP"] = 0 if actual.get("Clientes Totales", 0) == 0 else (actual.get("Clientes al corriente", 0) / actual.get("Clientes Totales", 0)) * 100
+        anterior["IP"] = 0 if anterior.get("Clientes Totales", 0) == 0 else (anterior.get("Clientes al corriente", 0) / anterior.get("Clientes Totales", 0)) * 100
+
     resumen = pd.DataFrame({
         "Indicador": indicadores,
         f"Dato sem {semana_actual}": [actual.get(i, 0) for i in indicadores],
@@ -1932,6 +1954,9 @@ def tabla_por_nivel(df_filtrado: pd.DataFrame, nivel: str, indicadores: list[str
         for i in indicadores:
             anterior[i] = 0
 
+    actual = recalcular_ip_agregado(actual)
+    anterior = recalcular_ip_agregado(anterior)
+
     salida = actual.merge(
         anterior,
         on=nivel,
@@ -1983,6 +2008,7 @@ def construir_top_bottom_por_variable(
         .sum(numeric_only=True)
         .reset_index()
     )
+    agrupado = recalcular_ip_agregado(agrupado)
 
     tablas = []
     ascendente = True if tipo_ranking == "Bottom" else False
@@ -2793,7 +2819,7 @@ def grafica_cumplimiento(evol, col_cump, modo_moneda=None):
             ),
             text=df_tmp[col_cump].apply(lambda x: formato_pct(x, 2, False)),
             textposition="inside",
-            textangle=-90,
+            textangle=0,
             textfont=dict(color="#082567", size=10),
             cliponaxis=False,
             hovertemplate=(
@@ -4093,6 +4119,9 @@ if unidades_negocio:
             <div class="landing-wrap">
                 <div class="landing-title">Indicadores de Productividad y Cobranza</div>
                 <div class="landing-subtitle">Semanal</div>
+                <div class="landing-subtitle" style="max-width: 920px; margin-left:auto; margin-right:auto; line-height:1.45;">
+                    En esta página puedes consultar la evolución semanal de cartera y cobranza, revisar KPIs, comparar contra la semana anterior, identificar mejores y peores semanas, analizar movimientos de coordinadoras y generar un resumen ejecutivo por país o unidad de negocio.
+                </div>
             </div>
             """,
             unsafe_allow_html=True
@@ -4141,6 +4170,15 @@ else:
 # ============================================================
 # BARRA SUPERIOR
 # ============================================================
+st.markdown(
+    """
+    <div class="comentario-amplio" style="width:100%; max-width:100%; margin: 0 0 16px 0;">
+        Usa <b>Vista</b> para alternar entre Cartera y Cobranza. En <b>Cartera</b> los filtros de Marca y País ajustan los KPIs, tablas, movimientos y análisis de coordinadoras. En <b>Cobranza</b> los mismos filtros controlan la evolución histórica, el cumplimiento semanal y la comparación cuota vs pago. El botón <b>Resumen semana país</b> abre una página completa con la lectura ejecutiva del último corte; <b>Cambiar unidad</b> regresa a la selección inicial.
+    </div>
+    """,
+    unsafe_allow_html=True
+)
+
 st.markdown('<div class="top-filter-card"><div class="top-filter-title">Filtros</div>', unsafe_allow_html=True)
 
 filtros = {}
@@ -4260,10 +4298,7 @@ with col_cambiar:
             st.session_state.pop("unidad_negocio_app", None)
             st.rerun()
 
-st.caption(
-    "La evolución semanal muestra todo el histórico filtrado. La distribución por coordinadora usa siempre la última semana disponible. "
-    "El selector de moneda solo convierte variables monetarias; clientes y coordinadoras permanecen igual."
-)
+
 st.markdown('</div>', unsafe_allow_html=True)
 
 # Aplica conversión de moneda después de construir los filtros, para conservar las opciones originales.
@@ -4308,6 +4343,7 @@ df_filtrado = consolidar_grano_correcto(
     df_base=df_filtrado_original,
     indicadores=indicadores_sel
 )
+df_filtrado = recalcular_ip_agregado(df_filtrado)
 
 filas_despues_consolidar = len(df_filtrado)
 
