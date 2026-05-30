@@ -1701,6 +1701,10 @@ def crear_grafica_evolucion_fija(
         "doubleClick": False,
         "responsive": True,
         "staticPlot": False,
+        "modeBarButtonsToRemove": [
+            "zoom2d", "pan2d", "select2d", "lasso2d", "zoomIn2d", "zoomOut2d",
+            "autoScale2d", "resetScale2d"
+        ],
     }
 
     return fig, config
@@ -3735,6 +3739,58 @@ def altura_tabla_resumen(df_tabla: pd.DataFrame, alto_fila: int = 36, alto_heade
         n = 0
     return int(min(max_height, max(120, alto_header + (n + 1) * alto_fila)))
 
+
+def generar_parrafo_resumen_cobranza(resumen_cobranza: pd.DataFrame | None, semana_actual_cobranza: int | None, semana_anterior_cobranza: int | None) -> str:
+    """Construye una lectura ejecutiva corta con los datos visibles de Cobranza."""
+    if resumen_cobranza is None or resumen_cobranza.empty or semana_actual_cobranza is None:
+        return ""
+
+    col_dato = f"Dato sem {semana_actual_cobranza}"
+    if col_dato not in resumen_cobranza.columns:
+        return ""
+
+    def valor_indicador(nombre: str):
+        fila = resumen_cobranza[resumen_cobranza["Indicador"].astype(str).str.lower() == nombre.lower()]
+        if fila.empty:
+            return None, None
+        valor = fila.iloc[0].get(col_dato, np.nan)
+        variacion = fila.iloc[0].get("Variación vs sem ant", np.nan)
+        return valor, variacion
+
+    cuota, var_cuota = valor_indicador("Cuota Total Cobranza")
+    pago, var_pago = valor_indicador("Recuperación semana")
+    cumplimiento, var_cump = valor_indicador("% de Cumplimiento")
+
+    partes = []
+    semana_ant_txt = semana_anterior_cobranza if semana_anterior_cobranza is not None else "la semana anterior"
+
+    if cuota is not None and pago is not None:
+        try:
+            brecha = float(cuota) - float(pago)
+            partes.append(
+                f"En Cobranza, para la semana {semana_actual_cobranza}, la cuota total es de {formato_numero(cuota)} "
+                f"y la recuperación semanal alcanza {formato_numero(pago)}, con una brecha pendiente de {formato_numero(brecha)}."
+            )
+        except Exception:
+            pass
+
+    if cumplimiento is not None and pd.notna(cumplimiento):
+        partes.append(f"El cumplimiento de cobranza se ubica en {formato_pct(cumplimiento, 2, False)}.")
+
+    movimientos = []
+    if var_cuota is not None and pd.notna(var_cuota):
+        movimientos.append(f"la cuota varía {formato_variacion(var_cuota)}")
+    if var_pago is not None and pd.notna(var_pago):
+        movimientos.append(f"la recuperación varía {formato_variacion(var_pago)}")
+    if var_cump is not None and pd.notna(var_cump):
+        movimientos.append(f"el cumplimiento cambia {formato_pct(var_cump, 2, True)}")
+
+    if movimientos:
+        partes.append(f"Contra la semana {semana_ant_txt}, " + ", ".join(movimientos) + ".")
+
+    return " ".join(partes)
+
+
 def abrir_modal_resumen_pais(
     resumen: pd.DataFrame,
     semana_actual: int,
@@ -3775,7 +3831,16 @@ def abrir_modal_resumen_pais(
     st.caption(f"Filtros aplicados: {filtros_texto}")
 
     st.markdown("### Lectura ejecutiva generada por IA")
-    comentario_seguro = html.escape(str(comentario_resumen)).replace("\n", "<br><br>")
+    comentario_resumen_completo = str(comentario_resumen)
+    parrafo_cobranza = generar_parrafo_resumen_cobranza(
+        resumen_cobranza=resumen_cobranza,
+        semana_actual_cobranza=semana_actual_cobranza,
+        semana_anterior_cobranza=semana_anterior_cobranza,
+    )
+    if parrafo_cobranza:
+        comentario_resumen_completo = comentario_resumen_completo + "\n\n" + parrafo_cobranza
+
+    comentario_seguro = html.escape(comentario_resumen_completo).replace("\n", "<br><br>")
     st.markdown(
         f'<div class="modal-resumen-card resumen-pagina-card">{comentario_seguro}</div>',
         unsafe_allow_html=True
@@ -4149,6 +4214,8 @@ if columnas_faltantes:
 
 niveles_disponibles = [c for c in NIVELES_ESTRUCTURA if c in df.columns]
 indicadores_disponibles = [c for c in INDICADORES_BASE if c in df.columns]
+if "IP" in df.columns and "IP" not in indicadores_disponibles:
+    indicadores_disponibles.append("IP")
 columna_cobranza_cartera = detectar_columna_cobranza_cartera(df)
 
 if not niveles_disponibles:
@@ -4736,21 +4803,21 @@ def crear_grafica_burbujas_faltas(
         plot_bgcolor="rgba(255,255,255,1)",
         font=dict(color="#111827", size=12),
         showlegend=False,
-        dragmode="pan" if modo_interactivo else False,
+        dragmode=False,
     )
 
     fig.update_xaxes(
         title="Clientes Totales",
         showgrid=False,
         zeroline=False,
-        fixedrange=not modo_interactivo,
+        fixedrange=True,
         tickformat=",.0f",
     )
     fig.update_yaxes(
         title="Porcentaje de Faltas",
         showgrid=False,
         zeroline=False,
-        fixedrange=not modo_interactivo,
+        fixedrange=True,
         tickformat=".0%",
     )
 
@@ -4759,10 +4826,14 @@ def crear_grafica_burbujas_faltas(
         fig.layout.updatemenus[0].buttons[0].args[1]["transition"] = {"duration": 450}
 
     config = {
-        "displayModeBar": True if modo_interactivo else False,
-        "scrollZoom": True if modo_interactivo else False,
-        "doubleClick": "reset" if modo_interactivo else False,
+        "displayModeBar": False,
+        "scrollZoom": False,
+        "doubleClick": False,
         "responsive": True,
+        "modeBarButtonsToRemove": [
+            "zoom2d", "pan2d", "select2d", "lasso2d", "zoomIn2d", "zoomOut2d",
+            "autoScale2d", "resetScale2d"
+        ],
     }
 
     return fig, config
@@ -4820,7 +4891,8 @@ if modulo_seleccionado == "Cartera":
                 "Cartera Total",
                 "Saldo Cartera",
                 "Saldo en atraso",
-                "Saldo PP"
+                "Saldo PP",
+                "IP"
             ]
             if c in df_filtrado.columns
         ]
@@ -4841,13 +4913,28 @@ if modulo_seleccionado == "Cartera":
                     key="indicador_evolucion"
                 )
 
-            evol = (
-                df_filtrado
-                .groupby("Semana del año", dropna=False)[indicador_grafica]
-                .sum()
-                .reset_index()
-                .sort_values("Semana del año")
-            )
+            if indicador_grafica == "IP" and {"Clientes al corriente", "Clientes Totales"}.issubset(df_filtrado.columns):
+                evol_base_ip = (
+                    df_filtrado
+                    .groupby("Semana del año", dropna=False)[["Clientes al corriente", "Clientes Totales"]]
+                    .sum(numeric_only=True)
+                    .reset_index()
+                    .sort_values("Semana del año")
+                )
+                evol_base_ip["IP"] = np.where(
+                    evol_base_ip["Clientes Totales"] == 0,
+                    0,
+                    (evol_base_ip["Clientes al corriente"] / evol_base_ip["Clientes Totales"]) * 100
+                )
+                evol = evol_base_ip[["Semana del año", "IP"]].copy()
+            else:
+                evol = (
+                    df_filtrado
+                    .groupby("Semana del año", dropna=False)[indicador_grafica]
+                    .sum()
+                    .reset_index()
+                    .sort_values("Semana del año")
+                )
 
             evol["Variación vs anterior"] = evol[indicador_grafica].diff()
 
@@ -4974,10 +5061,11 @@ if modulo_seleccionado == "Cartera":
             uniformtext_mode="show"
         )
 
+        fig_pie.update_layout(dragmode=False)
         st.plotly_chart(
             fig_pie,
             use_container_width=True,
-            config={"displayModeBar": False, "responsive": True}
+            config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True}
         )
         comentario_pie = generar_comentario_pie(pie)
 
@@ -5484,12 +5572,6 @@ else:
                     col_mejor_final = col_mejor if col_mejor and col_mejor in evol_cobranza.columns else "Mejor semana"
                     col_peor_final = col_peor if col_peor and col_peor in evol_cobranza.columns else "Peor semana"
 
-                    with col_cob_info:
-                        st.caption(
-                            f"Columnas detectadas: cuota = '{col_cuota}', pago = '{col_pago}', "
-                            f"cumplimiento = '{col_cump}', mejor = '{col_mejor_final}', peor = '{col_peor_final}'. Moneda: {etiqueta_moneda(modo_moneda)}."
-                        )
-
                     # ------------------------------
                     # Tabla base de Cobranza
                     # ------------------------------
@@ -5541,7 +5623,10 @@ else:
                     )
 
                     fig_cump = grafica_cumplimiento(evol_cobranza, col_cump, modo_moneda)
-                    st.plotly_chart(fig_cump, use_container_width=True)
+                    fig_cump.update_layout(dragmode=False)
+                    fig_cump.update_xaxes(fixedrange=True)
+                    fig_cump.update_yaxes(fixedrange=True)
+                    st.plotly_chart(fig_cump, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True})
 
                     # ------------------------------
                     # Gráfica cuota vs pago
@@ -5560,7 +5645,10 @@ else:
                         col_peor=col_peor_final,
                         modo_moneda=modo_moneda
                     )
-                    st.plotly_chart(fig_cp, use_container_width=True)
+                    fig_cp.update_layout(dragmode=False)
+                    fig_cp.update_xaxes(fixedrange=True)
+                    fig_cp.update_yaxes(fixedrange=True)
+                    st.plotly_chart(fig_cp, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True})
 
                     # ------------------------------
                     # Tabla últimas 5 semanas
@@ -5595,114 +5683,117 @@ else:
                     # ------------------------------
                     # Top / Bottom de Cobranza
                     # ------------------------------
-                    st.markdown("**Top / Bottom de cobranza por variable**")
+                    mostrar_top_bottom_cobranza = not es_presico_mexico
 
-                    niveles_top_bottom_cobranza = filtrar_niveles_top_bottom_visibles(
-                        df_cobranza_top_bottom_base,
-                        ["País", "Subdireccion", "Zona", "Sucursal", "Ruta"]
-                    )
+                    if mostrar_top_bottom_cobranza:
+                        st.markdown("**Top / Bottom de cobranza por variable**")
 
-                    variables_top_bottom_cobranza = [
-                        c for c in [
-                            col_cuota,
-                            col_pago,
-                            col_cump,
-                            col_mejor_final,
-                            col_peor_final,
+                        niveles_top_bottom_cobranza = filtrar_niveles_top_bottom_visibles(
+                            df_cobranza_top_bottom_base,
+                            ["País", "Subdireccion", "Zona", "Sucursal", "Ruta"]
+                        )
+
+                        variables_top_bottom_cobranza = [
+                            c for c in [
+                                col_cuota,
+                                col_pago,
+                                col_cump,
+                                col_mejor_final,
+                                col_peor_final,
+                            ]
+                            if c and c in df_cobranza_top_bottom_base.columns or c == col_cump
                         ]
-                        if c and c in df_cobranza_top_bottom_base.columns or c == col_cump
-                    ]
 
-                    # Quita duplicados conservando el orden.
-                    variables_top_bottom_cobranza = list(dict.fromkeys(variables_top_bottom_cobranza))
+                        # Quita duplicados conservando el orden.
+                        variables_top_bottom_cobranza = list(dict.fromkeys(variables_top_bottom_cobranza))
 
-                    semana_top_bottom_cobranza = obtener_ultima_semana_cobranza(df_cobranza_top_bottom_base)
+                        semana_top_bottom_cobranza = obtener_ultima_semana_cobranza(df_cobranza_top_bottom_base)
 
-                    if not niveles_top_bottom_cobranza:
-                        st.info("No hay niveles de estructura disponibles en la hoja Cobranza para construir el Top / Bottom.")
-                    elif not variables_top_bottom_cobranza:
-                        st.info("No hay variables de cobranza disponibles para construir el Top / Bottom.")
-                    elif semana_top_bottom_cobranza is None:
-                        st.info("No hay semanas válidas en Cobranza para construir el Top / Bottom.")
-                    else:
-                        col_tabla_top_bottom_cob, col_opciones_top_bottom_cob = st.columns([2.2, 1])
+                        if not niveles_top_bottom_cobranza:
+                            st.info("No hay niveles de estructura disponibles en la hoja Cobranza para construir el Top / Bottom.")
+                        elif not variables_top_bottom_cobranza:
+                            st.info("No hay variables de cobranza disponibles para construir el Top / Bottom.")
+                        elif semana_top_bottom_cobranza is None:
+                            st.info("No hay semanas válidas en Cobranza para construir el Top / Bottom.")
+                        else:
+                            col_tabla_top_bottom_cob, col_opciones_top_bottom_cob = st.columns([2.2, 1])
 
-                        with col_opciones_top_bottom_cob:
-                            tipo_top_bottom_cobranza = st.radio(
-                                "Top / Bottom",
-                                options=["Top", "Bottom"],
-                                horizontal=True,
-                                key="tipo_top_bottom_cobranza"
-                            )
-
-                            nivel_top_bottom_cobranza = st.selectbox(
-                                "Estructura",
-                                options=niveles_top_bottom_cobranza,
-                                index=0,
-                                key="nivel_top_bottom_cobranza"
-                            )
-
-                            variable_top_bottom_cobranza = st.selectbox(
-                                "Variable de cobranza",
-                                options=variables_top_bottom_cobranza,
-                                index=0,
-                                key="variable_top_bottom_cobranza"
-                            )
-
-                            cantidad_top_bottom_cobranza = st.number_input(
-                                "Cantidad",
-                                min_value=3,
-                                max_value=30,
-                                value=10,
-                                step=1,
-                                key="cantidad_top_bottom_cobranza"
-                            )
-
-                        tabla_top_bottom_cobranza = construir_top_bottom_cobranza(
-                            df_cobranza_base=df_cobranza_top_bottom_base,
-                            nivel_top_bottom=nivel_top_bottom_cobranza,
-                            variable_top_bottom=variable_top_bottom_cobranza,
-                            col_cuota=col_cuota,
-                            col_pago=col_pago,
-                            col_cump=col_cump,
-                            col_mejor=col_mejor_final,
-                            col_peor=col_peor_final,
-                            tipo_ranking=tipo_top_bottom_cobranza,
-                            cantidad=int(cantidad_top_bottom_cobranza),
-                            semana_objetivo=semana_top_bottom_cobranza
-                        )
-
-                        with col_tabla_top_bottom_cob:
-                            if tabla_top_bottom_cobranza.empty:
-                                st.info("No hay datos suficientes para mostrar el Top / Bottom de Cobranza con la selección actual.")
-                            else:
-                                st.caption(
-                                    f"Semana {semana_top_bottom_cobranza} | {tipo_top_bottom_cobranza} "
-                                    f"por {nivel_top_bottom_cobranza} | Moneda: {etiqueta_moneda(modo_moneda)}"
+                            with col_opciones_top_bottom_cob:
+                                tipo_top_bottom_cobranza = st.radio(
+                                    "Top / Bottom",
+                                    options=["Top", "Bottom"],
+                                    horizontal=True,
+                                    key="tipo_top_bottom_cobranza"
                                 )
 
-                                st.dataframe(
-                                    aplicar_formato_top_bottom_cobranza(tabla_top_bottom_cobranza),
-                                    use_container_width=True,
-                                    hide_index=True
+                                nivel_top_bottom_cobranza = st.selectbox(
+                                    "Estructura",
+                                    options=niveles_top_bottom_cobranza,
+                                    index=0,
+                                    key="nivel_top_bottom_cobranza"
                                 )
 
-                                csv_top_bottom_cobranza = tabla_top_bottom_cobranza.to_csv(index=False).encode("utf-8-sig")
-
-                                st.download_button(
-                                    label="Descargar Top / Bottom Cobranza",
-                                    data=csv_top_bottom_cobranza,
-                                    file_name=f"top_bottom_cobranza_{nivel_top_bottom_cobranza}_semana_{semana_top_bottom_cobranza}.csv",
-                                    mime="text/csv"
+                                variable_top_bottom_cobranza = st.selectbox(
+                                    "Variable de cobranza",
+                                    options=variables_top_bottom_cobranza,
+                                    index=0,
+                                    key="variable_top_bottom_cobranza"
                                 )
 
-                        comentario_top_bottom_cobranza = generar_comentario_top_bottom_cobranza(
-                            tabla_top_bottom=tabla_top_bottom_cobranza,
-                            tipo_top_bottom=tipo_top_bottom_cobranza,
-                            nivel_top_bottom=nivel_top_bottom_cobranza,
-                            semana_actual=semana_top_bottom_cobranza
-                        )
-                        mostrar_boton_comentario("top_bottom_cobranza", comentario_top_bottom_cobranza)
+                                cantidad_top_bottom_cobranza = st.number_input(
+                                    "Cantidad",
+                                    min_value=3,
+                                    max_value=30,
+                                    value=10,
+                                    step=1,
+                                    key="cantidad_top_bottom_cobranza"
+                                )
+
+                            tabla_top_bottom_cobranza = construir_top_bottom_cobranza(
+                                df_cobranza_base=df_cobranza_top_bottom_base,
+                                nivel_top_bottom=nivel_top_bottom_cobranza,
+                                variable_top_bottom=variable_top_bottom_cobranza,
+                                col_cuota=col_cuota,
+                                col_pago=col_pago,
+                                col_cump=col_cump,
+                                col_mejor=col_mejor_final,
+                                col_peor=col_peor_final,
+                                tipo_ranking=tipo_top_bottom_cobranza,
+                                cantidad=int(cantidad_top_bottom_cobranza),
+                                semana_objetivo=semana_top_bottom_cobranza
+                            )
+
+                            with col_tabla_top_bottom_cob:
+                                if tabla_top_bottom_cobranza.empty:
+                                    st.info("No hay datos suficientes para mostrar el Top / Bottom de Cobranza con la selección actual.")
+                                else:
+                                    st.caption(
+                                        f"Semana {semana_top_bottom_cobranza} | {tipo_top_bottom_cobranza} "
+                                        f"por {nivel_top_bottom_cobranza} | Moneda: {etiqueta_moneda(modo_moneda)}"
+                                    )
+
+                                    st.dataframe(
+                                        aplicar_formato_top_bottom_cobranza(tabla_top_bottom_cobranza),
+                                        use_container_width=True,
+                                        hide_index=True
+                                    )
+
+                                    csv_top_bottom_cobranza = tabla_top_bottom_cobranza.to_csv(index=False).encode("utf-8-sig")
+
+                                    st.download_button(
+                                        label="Descargar Top / Bottom Cobranza",
+                                        data=csv_top_bottom_cobranza,
+                                        file_name=f"top_bottom_cobranza_{nivel_top_bottom_cobranza}_semana_{semana_top_bottom_cobranza}.csv",
+                                        mime="text/csv"
+                                    )
+
+                            comentario_top_bottom_cobranza = generar_comentario_top_bottom_cobranza(
+                                tabla_top_bottom=tabla_top_bottom_cobranza,
+                                tipo_top_bottom=tipo_top_bottom_cobranza,
+                                nivel_top_bottom=nivel_top_bottom_cobranza,
+                                semana_actual=semana_top_bottom_cobranza
+                            )
+                            mostrar_boton_comentario("top_bottom_cobranza", comentario_top_bottom_cobranza)
 # ============================================================
 # AJUSTE FINAL DE CONTRASTE SOLO PARA MODO OSCURO
 # ============================================================
