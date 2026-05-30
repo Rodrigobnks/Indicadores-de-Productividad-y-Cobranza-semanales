@@ -3604,6 +3604,15 @@ def aplicar_formato_tabla_resumen_mixto(df_tabla: pd.DataFrame) -> pd.DataFrame:
 
     return df_fmt
 
+
+def altura_tabla_resumen(df_tabla: pd.DataFrame, alto_fila: int = 36, alto_header: int = 42, max_height: int = 340) -> int:
+    """Altura compacta para tablas del resumen; evita espacios en blanco al final."""
+    try:
+        n = len(df_tabla) if df_tabla is not None else 0
+    except Exception:
+        n = 0
+    return int(min(max_height, max(120, alto_header + (n + 1) * alto_fila)))
+
 def abrir_modal_resumen_pais(
     resumen: pd.DataFrame,
     semana_actual: int,
@@ -3674,11 +3683,12 @@ def abrir_modal_resumen_pais(
                     )
 
         st.markdown("### Detalle del resumen")
+        tabla_resumen_fmt = aplicar_formato_tabla(resumen)
         st.dataframe(
-            aplicar_formato_tabla(resumen),
+            tabla_resumen_fmt,
             use_container_width=True,
             hide_index=True,
-            height=520
+            height=altura_tabla_resumen(tabla_resumen_fmt, max_height=360)
         )
 
     if resumen_cobranza is not None and not resumen_cobranza.empty:
@@ -3703,11 +3713,12 @@ def abrir_modal_resumen_pais(
                         variacion=var_cob if semana_anterior_cobranza is not None else None
                     )
 
+        tabla_cobranza_fmt = aplicar_formato_tabla_resumen_mixto(resumen_cobranza)
         st.dataframe(
-            aplicar_formato_tabla_resumen_mixto(resumen_cobranza),
+            tabla_cobranza_fmt,
             use_container_width=True,
             hide_index=True,
-            height=360
+            height=altura_tabla_resumen(tabla_cobranza_fmt, max_height=300)
         )
     else:
         st.info("No se encontró información de Cobranza para incluirla en este resumen.")
@@ -6138,6 +6149,66 @@ st.markdown(
         font-weight: 700;
     }
 </style>
+    """,
+    unsafe_allow_html=True
+)
+
+
+# ============================================================
+# AJUSTE PUNTUAL V4: BOTONES DEL RESUMEN Y TABLAS COMPACTAS
+# No modifica lógica, solo visibilidad de botones y altura de tablas.
+# ============================================================
+st.markdown(
+    """
+    <style>
+    /* Botones visibles también cuando la computadora está en modo claro */
+    .stApp button[kind="primary"],
+    .stApp button[kind="secondary"],
+    .stApp div.stButton > button,
+    .stApp div[data-testid="stDownloadButton"] > button,
+    .stApp .top-filter-card div.stButton > button {
+        background-color: #082567 !important;
+        background: #082567 !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        border: 1px solid #082567 !important;
+        border-radius: 12px !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        box-shadow: 0 6px 16px rgba(8,37,103,0.22) !important;
+    }
+
+    .stApp button[kind="primary"] *,
+    .stApp button[kind="secondary"] *,
+    .stApp div.stButton > button *,
+    .stApp div[data-testid="stDownloadButton"] > button *,
+    .stApp .top-filter-card div.stButton > button * {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+        font-weight: 900 !important;
+    }
+
+    .stApp button[kind="primary"]:hover,
+    .stApp button[kind="secondary"]:hover,
+    .stApp div.stButton > button:hover,
+    .stApp div[data-testid="stDownloadButton"] > button:hover {
+        background-color: #d9c322 !important;
+        background: #d9c322 !important;
+        color: #082567 !important;
+        -webkit-text-fill-color: #082567 !important;
+        border-color: #d9c322 !important;
+    }
+
+    .stApp button[kind="primary"]:hover *,
+    .stApp button[kind="secondary"]:hover *,
+    .stApp div.stButton > button:hover *,
+    .stApp div[data-testid="stDownloadButton"] > button:hover * {
+        color: #082567 !important;
+        -webkit-text-fill-color: #082567 !important;
+    }
+    </style>
     """,
     unsafe_allow_html=True
 )
