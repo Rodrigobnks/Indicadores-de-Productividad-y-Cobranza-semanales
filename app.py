@@ -1190,6 +1190,69 @@ def etiqueta_moneda(modo_moneda: str) -> str:
     return "Pesos mexicanos (MXN)" if modo_moneda == "Pesos mexicanos" else "Moneda local"
 
 
+def obtener_query_param(nombre: str, default: str = "") -> str:
+    """Lee parámetros de URL de forma compatible con versiones recientes y anteriores de Streamlit."""
+    try:
+        valor = st.query_params.get(nombre, default)
+        if isinstance(valor, list):
+            return valor[0] if valor else default
+        return valor if valor is not None else default
+    except Exception:
+        try:
+            valores = st.experimental_get_query_params().get(nombre, [default])
+            return valores[0] if valores else default
+        except Exception:
+            return default
+
+
+def ir_a_pagina_resumen():
+    """Abre el resumen en una vista completa del tablero, no en modal."""
+    try:
+        st.query_params["vista"] = "resumen_pais"
+    except Exception:
+        st.experimental_set_query_params(vista="resumen_pais")
+    st.rerun()
+
+
+def volver_al_tablero():
+    """Regresa al tablero principal limpiando el parámetro de vista."""
+    try:
+        if "vista" in st.query_params:
+            del st.query_params["vista"]
+    except Exception:
+        st.experimental_set_query_params()
+    st.rerun()
+
+
+def filtrar_niveles_top_bottom_visibles(df_base: pd.DataFrame, niveles: list[str]) -> list[str]:
+    """
+    Evita mostrar Top / Bottom por niveles que solo tienen un valor visible.
+    Así, cuando Presico México queda como único país, no aparece el Top por País.
+    """
+    niveles_visibles = []
+    if df_base is None or df_base.empty:
+        return niveles_visibles
+
+    for nivel in niveles:
+        if nivel not in df_base.columns:
+            continue
+
+        n_unicos = (
+            df_base[nivel]
+            .dropna()
+            .astype(str)
+            .str.strip()
+            .replace("", np.nan)
+            .dropna()
+            .nunique()
+        )
+
+        if n_unicos > 1:
+            niveles_visibles.append(nivel)
+
+    return niveles_visibles
+
+
 def limpiar_datos(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df = normalizar_columnas(df)
@@ -2721,9 +2784,11 @@ def grafica_cumplimiento(evol, col_cump, modo_moneda=None):
                 line=dict(color=colores_borde, width=anchos_borde)
             ),
             text=df_tmp["Texto Dif % Mejor Semana"],
-            textposition="inside",
-            textangle=-90,
-            textfont=dict(color="white", size=10),
+            # La diferencia contra la mejor semana se muestra encima de la barra.
+            # Así no se pierde cuando el segmento azul es muy pequeño.
+            textposition="outside",
+            textangle=0,
+            textfont=dict(color="#082567", size=11),
             cliponaxis=False,
             hovertemplate=(
                 "<b>Semana:</b> %{x}<br>"
@@ -2753,7 +2818,7 @@ def grafica_cumplimiento(evol, col_cump, modo_moneda=None):
             borderpad=4
         )
 
-    y_max = max(1, mejor_cump * 1.12 if pd.notna(mejor_cump) else 1)
+    y_max = max(1, mejor_cump * 1.22 if pd.notna(mejor_cump) else 1)
 
     fig.update_layout(
         height=420,
@@ -3554,117 +3619,101 @@ def abrir_modal_resumen_pais(
     semana_anterior_cobranza: int | None = None,
 ):
     """
-    Abre un resumen ejecutivo en ventana emergente.
-    La ventana se agranda por CSS para cubrir aproximadamente el 80% de la pantalla.
+    Renderiza el resumen ejecutivo como página completa.
+    Ya no usa st.dialog; así no queda encerrado en una ventana flotante.
     """
-    @st.dialog("Resumen semanal de todo el país", width="large")
-    def _dialogo_resumen():
-        filtros_visibles = []
-        for col, val in filtros_aplicados.items():
-            if val:
-                valores = ", ".join([str(x) for x in val])
-                filtros_visibles.append(f"{col}: {valores}")
+    if st.button("← Volver al tablero", key="btn_volver_desde_resumen"):
+        volver_al_tablero()
 
-        filtros_texto = " | ".join(filtros_visibles) if filtros_visibles else "Todos los países / todas las marcas"
-        semana_anterior_txt = semana_anterior if semana_anterior is not None else "sin semana anterior"
+    filtros_visibles = []
+    for col, val in filtros_aplicados.items():
+        if val:
+            valores = ", ".join([str(x) for x in val])
+            filtros_visibles.append(f"{col}: {valores}")
 
-        st.markdown(
-            f"""
-            <span class="modal-resumen-meta">Semana actual: {semana_actual}</span>
-            <span class="modal-resumen-meta">Comparativo: {semana_anterior_txt}</span>
-            <span class="modal-resumen-meta">Moneda: {etiqueta_moneda(modo_moneda)}</span>
-            """,
-            unsafe_allow_html=True
+    filtros_texto = " | ".join(filtros_visibles) if filtros_visibles else "Todos los países / todas las marcas"
+    semana_anterior_txt = semana_anterior if semana_anterior is not None else "sin semana anterior"
+
+    st.markdown("# Resumen semanal de todo el país")
+    st.markdown(
+        f"""
+        <span class="modal-resumen-meta">Semana actual: {semana_actual}</span>
+        <span class="modal-resumen-meta">Comparativo: {semana_anterior_txt}</span>
+        <span class="modal-resumen-meta">Moneda: {etiqueta_moneda(modo_moneda)}</span>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.caption(f"Filtros aplicados: {filtros_texto}")
+
+    st.markdown("### Lectura ejecutiva generada por IA")
+    comentario_seguro = html.escape(str(comentario_resumen)).replace("\n", "<br><br>")
+    st.markdown(
+        f'<div class="modal-resumen-card resumen-pagina-card">{comentario_seguro}</div>',
+        unsafe_allow_html=True
+    )
+
+    if resumen is not None and not resumen.empty:
+        metricas_modal = [
+            c for c in [
+                "Clientes Totales",
+                "Clientes al corriente",
+                "Cartera Total",
+                "Saldo en atraso",
+            ]
+            if c in resumen["Indicador"].astype(str).tolist()
+        ]
+
+        if metricas_modal:
+            cols_modal = st.columns(len(metricas_modal))
+            for idx, indicador in enumerate(metricas_modal):
+                fila = resumen[resumen["Indicador"] == indicador].iloc[0]
+                with cols_modal[idx]:
+                    tarjeta_kpi(
+                        label=indicador,
+                        valor=fila.get(f"Dato sem {semana_actual}", 0),
+                        variacion=fila.get("Variación vs sem ant", np.nan)
+                        if semana_anterior is not None else None
+                    )
+
+        st.markdown("### Detalle del resumen")
+        st.dataframe(
+            aplicar_formato_tabla(resumen),
+            use_container_width=True,
+            hide_index=True,
+            height=520
         )
 
-        st.caption(f"Filtros aplicados: {filtros_texto}")
+    if resumen_cobranza is not None and not resumen_cobranza.empty:
+        st.markdown("### Resumen de cobranza")
 
-        st.markdown("### Lectura ejecutiva generada por IA")
-        comentario_seguro = html.escape(str(comentario_resumen)).replace("\n", "<br><br>")
-        st.markdown(
-            f'<div class="modal-resumen-card">{comentario_seguro}</div>',
-            unsafe_allow_html=True
+        metricas_cob_modal = [
+            c for c in ["Cuota Total Cobranza", "Recuperación semana", "% de Cumplimiento"]
+            if c in resumen_cobranza["Indicador"].astype(str).tolist()
+        ]
+
+        if metricas_cob_modal and semana_actual_cobranza is not None:
+            col_cob_modal = st.columns(len(metricas_cob_modal))
+            for idx, indicador in enumerate(metricas_cob_modal):
+                fila_cob = resumen_cobranza[resumen_cobranza["Indicador"] == indicador].iloc[0]
+                col_dato_cob = f"Dato sem {semana_actual_cobranza}"
+                valor_cob = fila_cob.get(col_dato_cob, 0)
+                var_cob = fila_cob.get("Variación vs sem ant", np.nan)
+                with col_cob_modal[idx]:
+                    tarjeta_kpi(
+                        label=indicador,
+                        valor=valor_cob,
+                        variacion=var_cob if semana_anterior_cobranza is not None else None
+                    )
+
+        st.dataframe(
+            aplicar_formato_tabla_resumen_mixto(resumen_cobranza),
+            use_container_width=True,
+            hide_index=True,
+            height=360
         )
-
-        if resumen is not None and not resumen.empty:
-            metricas_modal = [
-                c for c in [
-                    "Clientes Totales",
-                    "Clientes al corriente",
-                    "Cartera Total",
-                    "Saldo en atraso",
-                ]
-                if c in resumen["Indicador"].astype(str).tolist()
-            ]
-
-            if metricas_modal:
-                cols_modal = st.columns(len(metricas_modal))
-                for idx, indicador in enumerate(metricas_modal):
-                    fila = resumen[resumen["Indicador"] == indicador].iloc[0]
-                    with cols_modal[idx]:
-                        tarjeta_kpi(
-                            label=indicador,
-                            valor=fila.get(f"Dato sem {semana_actual}", 0),
-                            variacion=fila.get("Variación vs sem ant", np.nan)
-                            if semana_anterior is not None else None
-                        )
-
-            st.markdown("### Detalle del resumen")
-            st.dataframe(
-                aplicar_formato_tabla(resumen),
-                use_container_width=True,
-                hide_index=True,
-                height=380
-            )
-
-        if resumen_cobranza is not None and not resumen_cobranza.empty:
-            st.markdown("### Resumen de cobranza")
-
-            metricas_cob_modal = [
-                c for c in ["Cuota Total Cobranza", "Recuperación semana", "% de Cumplimiento"]
-                if c in resumen_cobranza["Indicador"].astype(str).tolist()
-            ]
-
-            if metricas_cob_modal and semana_actual_cobranza is not None:
-                col_cob_modal = st.columns(len(metricas_cob_modal))
-                for idx, indicador in enumerate(metricas_cob_modal):
-                    fila_cob = resumen_cobranza[resumen_cobranza["Indicador"] == indicador].iloc[0]
-                    valor_cob = fila_cob.get(f"Dato sem {semana_actual_cobranza}", np.nan)
-                    var_cob = fila_cob.get("Variación vs sem ant", np.nan)
-
-                    with col_cob_modal[idx]:
-                        if indicador.strip().startswith("%") or "cumplimiento" in normalizar_texto_tc(indicador).lower():
-                            valor_txt = formato_pct(valor_cob, 2, False)
-                            var_txt = formato_pct(var_cob, 2, True) if pd.notna(var_cob) else ""
-                            st.markdown(
-                                f"""
-                                <div class="kpi-card">
-                                    <div class="kpi-label">{indicador}</div>
-                                    <div class="kpi-value">{valor_txt}</div>
-                                    <div class="kpi-delta-neutral">{var_txt}</div>
-                                </div>
-                                """,
-                                unsafe_allow_html=True
-                            )
-                        else:
-                            tarjeta_kpi(
-                                label=indicador,
-                                valor=valor_cob,
-                                variacion=var_cob if semana_anterior_cobranza is not None else None
-                            )
-
-            st.dataframe(
-                aplicar_formato_tabla_resumen_mixto(resumen_cobranza),
-                use_container_width=True,
-                hide_index=True,
-                height=230
-            )
-        else:
-            st.info("No se encontró información de Cobranza para incluirla en este resumen.")
-
-
-
-    _dialogo_resumen()
+    else:
+        st.info("No se encontró información de Cobranza para incluirla en este resumen.")
 
 
 def generar_comentario_evolucion(evol: pd.DataFrame, indicador: str):
@@ -4204,11 +4253,9 @@ comentario_general_pais = generar_resumen_ia_paises(
 )
 
 if abrir_resumen_pais_click:
-    # El resumen se abre únicamente cuando se oprime el botón correspondiente.
-    # Esto evita que se vuelva a abrir al usar filtros, descargar archivos,
-    # cambiar unidad después de haberlo cerrado con la X.
-    st.session_state["modal_activo"] = None
+    ir_a_pagina_resumen()
 
+if obtener_query_param("vista") == "resumen_pais":
     resumen_cobranza_modal, semana_actual_cob_modal, semana_anterior_cob_modal = calcular_resumen_cobranza_para_modal(
         df_cobranza_base=df_cobranza,
         df_cartera_base=df,
@@ -4227,6 +4274,7 @@ if abrir_resumen_pais_click:
         semana_actual_cobranza=semana_actual_cob_modal,
         semana_anterior_cobranza=semana_anterior_cob_modal,
     )
+    st.stop()
 
 
 
@@ -4918,16 +4966,10 @@ if modulo_seleccionado == "Cartera":
     st.subheader("Top / Bottom por variable")
     comentario_top_bottom = ""
 
-    niveles_top_bottom = [
-        c for c in [
-            "País",
-            "Subdireccion",
-            "Zona",
-            "Sucursal",
-            "Ruta",
-        ]
-        if c in df_filtrado.columns
-    ]
+    niveles_top_bottom = filtrar_niveles_top_bottom_visibles(
+        df_filtrado,
+        ["País", "Subdireccion", "Zona", "Sucursal", "Ruta"]
+    )
 
     variables_top_bottom_disponibles = [
         c for c in indicadores_disponibles
@@ -5283,16 +5325,10 @@ else:
                     # ------------------------------
                     st.markdown("**Top / Bottom de cobranza por variable**")
 
-                    niveles_top_bottom_cobranza = [
-                        c for c in [
-                            "País",
-                            "Subdireccion",
-                            "Zona",
-                            "Sucursal",
-                            "Ruta",
-                        ]
-                        if c in df_cobranza_top_bottom_base.columns
-                    ]
+                    niveles_top_bottom_cobranza = filtrar_niveles_top_bottom_visibles(
+                        df_cobranza_top_bottom_base,
+                        ["País", "Subdireccion", "Zona", "Sucursal", "Ruta"]
+                    )
 
                     variables_top_bottom_cobranza = [
                         c for c in [
@@ -5719,6 +5755,136 @@ st.markdown(
         input,
         textarea {
             opacity: 1 !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
+# ============================================================
+# AJUSTE FINAL: FORZAR VISTA EN MODO CLARO
+# Este bloque queda al final para sobreescribir cualquier regla de modo oscuro
+# del navegador, Windows o extensiones.
+# ============================================================
+st.markdown(
+    """
+    <style>
+    html, body, .stApp, [data-testid="stAppViewContainer"] {
+        color-scheme: light !important;
+        background-color: #ffffff !important;
+    }
+
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --app-bg-card: rgba(255,255,255,0.94) !important;
+            --app-panel-bg: rgba(255,255,255,0.97) !important;
+            --app-panel-solid: #ffffff !important;
+            --app-text-main: #111827 !important;
+            --app-text-soft: #374151 !important;
+            --app-brand: #082567 !important;
+            --app-brand-soft: #dbeafe !important;
+            --app-accent: #d9c322 !important;
+            --app-border: rgba(226,232,240,0.95) !important;
+            --app-input-bg: #ffffff !important;
+            --app-chart-bg: rgba(255,255,255,0.96) !important;
+            --app-shadow: 0 8px 24px rgba(15, 23, 42, 0.09) !important;
+        }
+
+        .stApp {
+            background-color: #ffffff !important;
+            background-image: linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.90)) !important;
+        }
+
+        .main .block-container,
+        .top-filter-card,
+        .kpi-card,
+        .unidad-card,
+        .top-bottom-opciones-card,
+        div[data-testid="stPlotlyChart"],
+        div[data-testid="stDataFrame"],
+        div[data-testid="stTable"],
+        div[data-testid="stMetric"],
+        div[data-testid="stExpander"] {
+            background: rgba(255,255,255,0.97) !important;
+            color: #111827 !important;
+            -webkit-text-fill-color: initial !important;
+            border-color: rgba(226,232,240,0.95) !important;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.09) !important;
+        }
+
+        h1, h2, h3, h4,
+        .titulo,
+        .top-filter-title,
+        .kpi-label,
+        .unidad-name,
+        .top-bottom-opciones-title,
+        .top-filter-card label,
+        .top-filter-card label p,
+        div[data-testid="stWidgetLabel"],
+        div[data-testid="stWidgetLabel"] p {
+            color: #082567 !important;
+            -webkit-text-fill-color: #082567 !important;
+            text-shadow: none !important;
+        }
+
+        .subtitulo,
+        .landing-subtitle,
+        .unidad-help,
+        div[data-testid="stMarkdownContainer"] p,
+        .top-filter-card p,
+        .top-filter-card span,
+        .top-filter-card small,
+        .kpi-value {
+            color: #111827 !important;
+            -webkit-text-fill-color: #111827 !important;
+            text-shadow: none !important;
+        }
+
+        .top-filter-card div[data-baseweb="select"] > div,
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="input"] > div,
+        input, textarea, select {
+            background-color: #ffffff !important;
+            color: #111827 !important;
+            -webkit-text-fill-color: #111827 !important;
+            border: 1px solid rgba(226,232,240,0.95) !important;
+        }
+
+        .top-filter-card div[data-baseweb="select"] span,
+        .top-filter-card div[data-baseweb="select"] div,
+        .top-filter-card div[data-baseweb="select"] input,
+        div[data-baseweb="select"] span,
+        div[data-baseweb="select"] div,
+        div[data-baseweb="select"] input {
+            color: #111827 !important;
+            -webkit-text-fill-color: #111827 !important;
+        }
+
+        div[role="listbox"], ul[role="listbox"],
+        div[role="option"], li[role="option"] {
+            background-color: #ffffff !important;
+            color: #111827 !important;
+            -webkit-text-fill-color: #111827 !important;
+        }
+
+        div.stButton > button,
+        div[data-testid="stDownloadButton"] > button,
+        .top-filter-card div.stButton > button,
+        .unidad-seleccionada-pill {
+            background: #082567 !important;
+            color: #ffffff !important;
+            -webkit-text-fill-color: #ffffff !important;
+            border-color: #082567 !important;
+        }
+
+        .comentario-amplio,
+        .modal-resumen-card,
+        .resumen-pagina-card {
+            background: #dbeafe !important;
+            color: #082567 !important;
+            -webkit-text-fill-color: #082567 !important;
+            border-left-color: #d9c322 !important;
         }
     }
     </style>
