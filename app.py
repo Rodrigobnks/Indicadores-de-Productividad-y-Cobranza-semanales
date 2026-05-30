@@ -4239,16 +4239,39 @@ else:
 # ============================================================
 # BARRA SUPERIOR
 # ============================================================
+def es_unidad_latam(valor) -> bool:
+    return "LATAM" in normalizar_texto_tc(valor)
+
+texto_indicaciones = (
+    "Usa el filtro <b>Vista</b> para alternar entre <b>Cartera</b> y <b>Cobranza</b>. "
+    "En la vista <b>Cartera</b>, los filtros de <b>Marca</b> y <b>País</b> ajustan los KPIs, "
+    "tablas, movimientos y análisis de coordinadoras. En la vista <b>Cobranza</b>, esos mismos filtros "
+    "controlan la evolución histórica, el cumplimiento semanal y la comparación de cuota vs. pago. "
+)
+
+if es_unidad_latam(unidad_negocio_seleccionada):
+    texto_indicaciones += (
+        "En <b>Presico LATAM</b>, si seleccionas <b>Pesos mexicanos</b>, puedes ver las variables "
+        "consolidadas con <b>todos</b> los países; si seleccionas <b>Moneda local</b>, "
+        "la visualización se hace <b>solo por país</b> para no mezclar monedas. "
+    )
+
+texto_indicaciones += (
+    "El botón <b>Resumen semana país</b> abre una página completa con la lectura ejecutiva del último corte; "
+    "el botón <b>Cambiar unidad</b> regresa a la selección inicial."
+)
+
 st.markdown(
-    """
+    f'''
     <div class="comentario-amplio" style="width:100%; max-width:100%; margin: 0 0 16px 0;">
-        Usa <b>Vista</b> para alternar entre Cartera y Cobranza. En <b>Cartera</b> los filtros de Marca y País ajustan los KPIs, tablas, movimientos y análisis de coordinadoras. En <b>Cobranza</b> los mismos filtros controlan la evolución histórica, el cumplimiento semanal y la comparación cuota vs pago. En <b>Présico LATAM</b>, si seleccionas <b>Pesos mexicanos</b> puedes ver las variables consolidadas con <b>Todos</b> los países; si seleccionas <b>Moneda local</b>, la visualización se hace <b>solo por país</b> para no mezclar monedas. El botón <b>Resumen semana país</b> abre una página completa con la lectura ejecutiva del último corte; <b>Cambiar unidad</b> regresa a la selección inicial.
+        {texto_indicaciones}
     </div>
-    """,
+    ''',
     unsafe_allow_html=True
 )
 
 st.markdown('<div class="top-filter-card"><div class="top-filter-title">Filtros</div>', unsafe_allow_html=True)
+
 
 filtros = {}
 
