@@ -2385,69 +2385,52 @@ def calcular_resumen_movimientos(movimientos: pd.DataFrame) -> dict:
     }
 
 
+def tabla_improductivas_por_marca(movimientos: pd.DataFrame) -> pd.DataFrame:
+    """
+    Cuenta coordinadoras que pasaron a Improductiva por marca,
+    sin importar su categoría anterior, excluyendo las que ya eran Improductivas.
+    """
+    if movimientos is None or movimientos.empty:
+        return pd.DataFrame(columns=["Marca", "Coordinadoras que pasaron a Improductiva"])
+
+    mov = movimientos.copy()
+    mov = mov[
+        (mov["Semana actual"].astype(str) == "Improductiva") &
+        (mov["Semana anterior"].astype(str) != "Improductiva") &
+        (mov["Semana anterior"].astype(str) != "Nueva")
+    ].copy()
+
+    if mov.empty:
+        return pd.DataFrame(columns=["Marca", "Coordinadoras que pasaron a Improductiva"])
+
+    if "Marca destino" in mov.columns:
+        mov["Marca"] = mov["Marca destino"]
+    elif "Marca origen" in mov.columns:
+        mov["Marca"] = mov["Marca origen"]
+    else:
+        mov["Marca"] = "Sin marca"
+
+    if "_llave_coordinadora_marca" in mov.columns:
+        conteo = mov.groupby("Marca", dropna=False)["_llave_coordinadora_marca"].nunique().reset_index()
+    else:
+        conteo = mov.groupby("Marca", dropna=False).size().reset_index(name="_conteo")
+        conteo = conteo.rename(columns={"_conteo": "_llave_coordinadora_marca"})
+
+    conteo = conteo.rename(columns={"_llave_coordinadora_marca": "Coordinadoras que pasaron a Improductiva"})
+    conteo["Marca"] = conteo["Marca"].fillna("Sin marca").astype(str)
+    return conteo.sort_values("Coordinadoras que pasaron a Improductiva", ascending=False).reset_index(drop=True)
+
+
 def mostrar_cuadro_resumen_movimientos(movimientos: pd.DataFrame):
     resumen_mov = calcular_resumen_movimientos(movimientos)
 
-    html_resumen = f"""
-    <html>
-    <head>
-        <style>
-            body {{
-                margin: 0;
-                padding: 0;
-                font-family: Arial, sans-serif;
-                background: transparent;
-            }}
-            .cuadro-movimientos {{
-                border: 1px solid #6b7280;
-                border-radius: 2px;
-                overflow: hidden;
-                background: #ffffff;
-                width: 100%;
-                box-sizing: border-box;
-            }}
-            .cuadro-header {{
-                background: #082567;
-                color: white;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                padding: 5px 10px;
-                font-size: 17px;
-                font-weight: 500;
-            }}
-            .cuadro-body {{
-                padding: 12px 10px 8px 10px;
-                font-size: 20px;
-                line-height: 1.25;
-                color: #111827;
-            }}
-            .fila-mov {{
-                display: flex;
-                justify-content: space-between;
-                gap: 12px;
-                margin-bottom: 2px;
-                white-space: nowrap;
-            }}
-            .valor-rojo {{
-                color: red;
-                min-width: 45px;
-                text-align: right;
-            }}
-            .valor-verde {{
-                color: #059669;
-                min-width: 45px;
-                text-align: right;
-            }}
-        </style>
-    </head>
-    <body>
+    st.markdown(
+        f"""
         <div class="cuadro-movimientos">
             <div class="cuadro-header">
                 <span>Movimientos totales</span>
                 <span>{resumen_mov["Movimientos totales"]:,.0f}</span>
             </div>
-
             <div class="cuadro-body">
                 <div class="fila-mov">
                     <span>Pérdida de Productivas</span>
@@ -2467,11 +2450,26 @@ def mostrar_cuadro_resumen_movimientos(movimientos: pd.DataFrame):
                 </div>
             </div>
         </div>
-    </body>
-    </html>
-    """
+        """,
+        unsafe_allow_html=True
+    )
 
-    components.html(html_resumen, height=150, scrolling=False)
+    tabla_imp = tabla_improductivas_por_marca(movimientos)
+    st.markdown(
+        '<div class="cuadro-marca-title">Coordinadoras que pasaron a Improductiva por marca</div>',
+        unsafe_allow_html=True
+    )
+    if tabla_imp.empty:
+        st.markdown(
+            '<div class="cuadro-marca-vacio">Sin movimientos hacia Improductiva.</div>',
+            unsafe_allow_html=True
+        )
+    else:
+        st.dataframe(
+            tabla_imp,
+            use_container_width=True,
+            hide_index=True
+        )
 
 
 # ============================================================
@@ -4126,11 +4124,36 @@ with col_modulo:
         key="modulo_superior"
     )
 
+# Detecta el alcance de países antes de mostrar moneda.
+# Regla solicitada:
+# - Presico México: solo Moneda local.
+# - LATAM en Moneda local: no permite "Todos" en País y entra Guatemala por default.
+# - LATAM en Pesos mexicanos: sí permite "Todos".
+paises_base_filtro = []
+if "País" in base_para_filtros.columns:
+    paises_base_filtro = sorted(base_para_filtros["País"].dropna().astype(str).str.strip().unique().tolist())
+
+unidad_norm = normalizar_texto_tc(unidad_negocio_seleccionada) if unidad_negocio_seleccionada is not None else ""
+paises_norm = [normalizar_texto_tc(x) for x in paises_base_filtro]
+es_presico_mexico = (
+    unidad_norm == "PRESICO"
+    and len(paises_norm) == 1
+    and paises_norm[0] in ["MEXICO", "MX"]
+)
+es_latam = "LATAM" in unidad_norm
+
+opciones_moneda = ["Moneda local"] if es_presico_mexico else ["Moneda local", "Pesos mexicanos"]
+
+# Si el usuario venía de Pesos mexicanos y ahora entra a Presico México,
+# se fuerza automáticamente a Moneda local para evitar una opción inválida.
+if st.session_state.get("modo_moneda_superior") not in opciones_moneda:
+    st.session_state["modo_moneda_superior"] = "Moneda local"
+
 with col_moneda:
     modo_moneda = st.radio(
         "Moneda",
-        options=["Moneda local", "Pesos mexicanos"],
-        index=0,
+        options=opciones_moneda,
+        index=opciones_moneda.index(st.session_state.get("modo_moneda_superior", "Moneda local")),
         horizontal=True,
         key="modo_moneda_superior"
     )
@@ -4139,16 +4162,33 @@ with col_moneda:
 for col_filtro, col_streamlit in [("Marca", col_marca), ("País", col_pais)]:
     if col_filtro in df.columns:
         df_opciones = filtrar_por_diccionario(base_para_filtros, filtros, excluir_col=col_filtro)
-        valores = sorted(df_opciones[col_filtro].dropna().astype(str).unique())
-        opciones = ["Todos"] + valores
+        valores = sorted(df_opciones[col_filtro].dropna().astype(str).str.strip().unique())
+
+        if col_filtro == "País" and es_latam and modo_moneda == "Moneda local":
+            # En LATAM + Moneda local no se permite consolidar "Todos" porque mezcla monedas.
+            opciones = valores
+            if not opciones:
+                opciones = ["Sin datos"]
+            default_pais = "Guatemala" if "Guatemala" in opciones else opciones[0]
+            valor_actual = st.session_state.get(f"filtro_superior_{col_filtro}")
+            if valor_actual not in opciones:
+                st.session_state[f"filtro_superior_{col_filtro}"] = default_pais
+            index_default = opciones.index(st.session_state.get(f"filtro_superior_{col_filtro}", default_pais))
+        else:
+            opciones = ["Todos"] + valores
+            valor_actual = st.session_state.get(f"filtro_superior_{col_filtro}")
+            if valor_actual not in opciones:
+                st.session_state[f"filtro_superior_{col_filtro}"] = "Todos"
+            index_default = opciones.index(st.session_state.get(f"filtro_superior_{col_filtro}", "Todos"))
+
         with col_streamlit:
             seleccion = st.selectbox(
                 col_filtro,
                 options=opciones,
-                index=0,
+                index=index_default,
                 key=f"filtro_superior_{col_filtro}"
             )
-        if seleccion != "Todos":
+        if seleccion != "Todos" and seleccion != "Sin datos":
             filtros[col_filtro] = [seleccion]
     else:
         with col_streamlit:
@@ -5973,7 +6013,131 @@ st.markdown(
         font-weight: 800 !important;
         line-height: 1.55 !important;
     }
-    </style>
+    
+
+    /* Botones visibles cuando Windows/navegador está en modo oscuro, pero el tablero fuerza claro */
+    div.stButton > button,
+    div[data-testid="stDownloadButton"] > button,
+    .top-filter-card div.stButton > button,
+    .unidad-seleccionada-pill {
+        background: #082567 !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        border: 1px solid #082567 !important;
+        opacity: 1 !important;
+        font-weight: 900 !important;
+        min-height: 42px !important;
+    }
+
+    div.stButton > button *,
+    div[data-testid="stDownloadButton"] > button *,
+    .top-filter-card div.stButton > button *,
+    .unidad-seleccionada-pill * {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        opacity: 1 !important;
+        font-weight: 900 !important;
+    }
+
+    div.stButton > button:hover,
+    div[data-testid="stDownloadButton"] > button:hover {
+        background: #d9c322 !important;
+        color: #082567 !important;
+        -webkit-text-fill-color: #082567 !important;
+        border-color: #d9c322 !important;
+    }
+
+    div.stButton > button:hover *,
+    div[data-testid="stDownloadButton"] > button:hover * {
+        color: #082567 !important;
+        -webkit-text-fill-color: #082567 !important;
+    }
+
+    /* Cuadro de movimientos usando la tipografía general de Streamlit */
+    .cuadro-movimientos {
+        border: 1px solid rgba(8,37,103,0.35);
+        border-radius: 10px;
+        overflow: hidden;
+        background: #ffffff;
+        width: 100%;
+        box-sizing: border-box;
+        font-family: inherit !important;
+        color: #111827 !important;
+        margin-bottom: 14px;
+    }
+
+    .cuadro-header {
+        background: #082567;
+        color: #ffffff !important;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 7px 10px;
+        font-size: 16px;
+        font-weight: 800;
+        font-family: inherit !important;
+    }
+
+    .cuadro-header * {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+    }
+
+    .cuadro-body {
+        padding: 12px 10px 8px 10px;
+        font-size: 18px;
+        line-height: 1.30;
+        color: #111827 !important;
+        font-family: inherit !important;
+    }
+
+    .fila-mov {
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 3px;
+        white-space: nowrap;
+        font-family: inherit !important;
+    }
+
+    .valor-rojo {
+        color: #dc2626 !important;
+        -webkit-text-fill-color: #dc2626 !important;
+        min-width: 45px;
+        text-align: right;
+        font-weight: 900;
+    }
+
+    .valor-verde {
+        color: #059669 !important;
+        -webkit-text-fill-color: #059669 !important;
+        min-width: 45px;
+        text-align: right;
+        font-weight: 900;
+    }
+
+    .cuadro-marca-title {
+        margin-top: 12px;
+        background: #082567;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        border-radius: 10px 10px 0 0;
+        padding: 8px 10px;
+        font-weight: 900;
+        font-family: inherit !important;
+    }
+
+    .cuadro-marca-vacio {
+        background: #ffffff;
+        color: #111827 !important;
+        -webkit-text-fill-color: #111827 !important;
+        border: 1px solid rgba(8,37,103,0.20);
+        border-top: 0;
+        border-radius: 0 0 10px 10px;
+        padding: 10px;
+        font-weight: 700;
+    }
+</style>
     """,
     unsafe_allow_html=True
 )
