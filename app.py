@@ -1055,6 +1055,37 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+
+# Ajuste puntual: botones/píldoras del resumen visibles en modo claro y oscuro.
+st.markdown(
+    """
+    <style>
+    .modal-resumen-meta {
+        background-color: #082567 !important;
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        opacity: 1 !important;
+    }
+
+    .modal-resumen-meta * {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        opacity: 1 !important;
+    }
+
+    div.stButton > button,
+    div.stButton > button *,
+    div[data-testid="stDownloadButton"] > button,
+    div[data-testid="stDownloadButton"] > button * {
+        color: #ffffff !important;
+        -webkit-text-fill-color: #ffffff !important;
+        opacity: 1 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # ============================================================
 # FUNCIONES GENERALES
 # ============================================================
@@ -1605,13 +1636,16 @@ def crear_grafica_evolucion_fija(
     return fig, config
 
 def tarjeta_kpi(label, valor, variacion=None):
-    valor_fmt = formato_numero(valor)
+    label_norm = normalizar_texto_tc(label).lower()
+    es_porcentaje = str(label).strip().startswith("%") or "cumplimiento" in label_norm
+
+    valor_fmt = formato_pct(valor, 2, False) if es_porcentaje else formato_numero(valor)
 
     if variacion is None or pd.isna(variacion):
         delta_html = ""
     else:
         variacion = float(variacion)
-        variacion_fmt = formato_variacion(variacion)
+        variacion_fmt = formato_pct(variacion, 2, True) if es_porcentaje else formato_variacion(variacion)
 
         if variacion > 0:
             clase = "kpi-delta-positive"
