@@ -1600,10 +1600,18 @@ def crear_grafica_evolucion_fija(
     df_plot = df_plot.sort_values("Semana del año").reset_index(drop=True)
     df_plot["Semana texto"] = df_plot["Semana del año"].apply(lambda x: f"S{int(x)}")
 
-    df_plot["Texto valor"] = df_plot[indicador_grafica].apply(lambda x: f"{x:,.0f}")
-    df_plot["Texto variacion"] = df_plot["Variación vs anterior"].apply(
-        lambda x: formato_variacion(x) if pd.notna(x) else ""
-    )
+    es_ip = normalizar_texto_tc(indicador_grafica).strip().lower() == "ip"
+
+    if es_ip:
+        df_plot["Texto valor"] = df_plot[indicador_grafica].apply(lambda x: f"{float(x):,.1f}%")
+        df_plot["Texto variacion"] = df_plot["Variación vs anterior"].apply(
+            lambda x: f"{float(x):+,.1f} pp" if pd.notna(x) else ""
+        )
+    else:
+        df_plot["Texto valor"] = df_plot[indicador_grafica].apply(lambda x: f"{x:,.0f}")
+        df_plot["Texto variacion"] = df_plot["Variación vs anterior"].apply(
+            lambda x: formato_variacion(x) if pd.notna(x) else ""
+        )
 
     valores_y = df_plot[indicador_grafica].astype(float)
     y_min = float(valores_y.min())
@@ -1671,7 +1679,7 @@ def crear_grafica_evolucion_fija(
             fig.add_annotation(
                 x=fila["Semana texto"],
                 y=fila[indicador_grafica],
-                text=f"<b>{formato_variacion(fila['Variación vs anterior'])}</b>",
+                text=f"<b>{fila['Texto variacion']}</b>",
                 showarrow=False,
                 yshift=yshift_variacion,
                 font=dict(color="#082567", size=12),
@@ -1683,11 +1691,14 @@ def crear_grafica_evolucion_fija(
 
     ticks_y = np.linspace(y_min_fijo, y_max_fijo, 5)
 
-    titulo_eje_y = (
-        f"Monto ({etiqueta_moneda(modo_moneda)})"
-        if es_columna_monetaria(indicador_grafica)
-        else "Valor"
-    )
+    if es_ip:
+        titulo_eje_y = "IP (%)"
+    else:
+        titulo_eje_y = (
+            f"Monto ({etiqueta_moneda(modo_moneda)})"
+            if es_columna_monetaria(indicador_grafica)
+            else "Valor"
+        )
 
     fig.update_layout(
         height=altura,
@@ -1721,7 +1732,7 @@ def crear_grafica_evolucion_fija(
         range=[y_min_fijo, y_max_fijo],
         tickmode="array",
         tickvals=ticks_y,
-        ticktext=[formato_eje_compacto(v) for v in ticks_y],
+        ticktext=[f"{v:,.1f}%" for v in ticks_y] if es_ip else [formato_eje_compacto(v) for v in ticks_y],
         gridcolor="rgba(148,163,184,0.25)",
         zeroline=False,
         tickfont=dict(size=11, color="#64748b"),
@@ -5806,7 +5817,7 @@ else:
                         elif semana_top_bottom_cobranza is None:
                             st.info("No hay semanas válidas en Cobranza para construir el Top / Bottom.")
                         else:
-                            col_tabla_top_bottom_cob, col_opciones_top_bottom_cob = st.columns([2.2, 1])
+                            col_tabla_top_bottom_cob, col_opciones_top_bottom_cob = st.columns([3.4, 1.1], gap="small")
 
                             # La estructura ya no se muestra como filtro lateral. Se define automáticamente:
                             # si existe País, se usa País; si no, se toma el primer nivel disponible.
