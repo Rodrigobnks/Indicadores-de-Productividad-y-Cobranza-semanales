@@ -8,6 +8,7 @@ from io import BytesIO
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -1603,8 +1604,8 @@ def mostrar_grafica_burbujas_amplia(fig: go.Figure, config: dict | None = None, 
     fig_amplia = go.Figure(fig)
     fig_amplia.update_layout(
         autosize=False,
-        width=1180,
-        height=880,
+        width=1350,
+        height=860,
         margin=dict(t=95, b=90, l=105, r=80),
         font=dict(color="#111827", size=15),
         title=dict(
@@ -1621,8 +1622,8 @@ def mostrar_grafica_burbujas_amplia(fig: go.Figure, config: dict | None = None, 
         full_html=False,
         include_plotlyjs="cdn",
         config=config,
-        default_width="1180px",
-        default_height="880px",
+        default_width="1350px",
+        default_height="860px",
     )
 
     components.html(
@@ -1640,8 +1641,8 @@ def mostrar_grafica_burbujas_amplia(fig: go.Figure, config: dict | None = None, 
             box-sizing: border-box;
         }}
         .chart-scroll-inner {{
-            width: 1180px;
-            min-width: 1180px;
+            width: 1350px;
+            min-width: 1350px;
         }}
         .chart-scroll-hint {{
             font-family: Arial, sans-serif;
@@ -1656,7 +1657,7 @@ def mostrar_grafica_burbujas_amplia(fig: go.Figure, config: dict | None = None, 
             <div class="chart-scroll-inner">{html_plot}</div>
         </div>
         """,
-        height=935,
+        height=915,
         scrolling=True,
     )
 
@@ -4900,9 +4901,11 @@ def crear_grafica_burbujas_faltas(
     for _, idx_semana in df_plot.groupby("Etiqueta semana").groups.items():
         tmp = df_plot.loc[list(idx_semana)].copy()
         idx_etiquetas = set()
+        # Solo se etiquetan los casos más relevantes para que no se amontone el texto.
+        # El resto de sucursales se consulta al pasar el cursor sobre la burbuja.
         for col in ["Clientes Totales", "Faltas", "Porcentaje de Faltas"]:
-            idx_etiquetas.update(tmp.nlargest(8, col).index.tolist())
-        idx_etiquetas.update(tmp.nsmallest(4, "Porcentaje de Faltas").index.tolist())
+            idx_etiquetas.update(tmp.nlargest(4, col).index.tolist())
+        idx_etiquetas.update(tmp.nsmallest(2, "Porcentaje de Faltas").index.tolist())
         df_plot.loc[list(idx_etiquetas), "Etiqueta visible"] = df_plot.loc[list(idx_etiquetas), "Estructura"]
 
     max_x = max(float(df_plot["Clientes Totales"].max()), 1)
@@ -4918,7 +4921,7 @@ def crear_grafica_burbujas_faltas(
             animation_group="Estructura",
             hover_name="Estructura",
             text="Etiqueta visible",
-            size_max=48,
+            size_max=42,
             range_x=[0, max_x * 1.12],
             range_y=[0, min(max_y * 1.18, 1.05)],
             labels={
@@ -4943,7 +4946,7 @@ def crear_grafica_burbujas_faltas(
             size="Tamaño burbuja",
             hover_name="Estructura",
             text="Etiqueta visible",
-            size_max=48,
+            size_max=42,
             range_x=[0, max_x * 1.12],
             range_y=[0, min(max_y * 1.18, 1.05)],
             labels={
@@ -4959,8 +4962,8 @@ def crear_grafica_burbujas_faltas(
 
     fig.update_traces(
         textposition="top center",
-        textfont=dict(size=10, color="#111827"),
-        marker=dict(color="#5aa9f2", line=dict(color="white", width=2), opacity=0.70),
+        textfont=dict(size=11, color="#111827"),
+        marker=dict(color="#5aa9f2", line=dict(color="white", width=2), opacity=0.62),
         hovertemplate=(
             "<b>%{hovertext}</b><br>"
             "Clientes Totales: %{customdata[0]}<br>"
@@ -5483,26 +5486,22 @@ if modulo_seleccionado == "Cartera":
         if datos_burbujas.empty:
             st.info("No hay datos suficientes para construir la gráfica de burbujas con los filtros actuales.")
         else:
-            with col_modo_burbuja:
-                modo_interactivo_burbujas = st.toggle(
-                    "Activar movimiento, zoom y desplazamiento por fechas",
-                    value=False,
-                    key="modo_interactivo_burbujas_faltas"
-                )
+            # Gráfica fija: se elimina el botón de movimiento/animación para evitar saturación
+            # y errores en vista móvil. La semana se elige manualmente.
+            modo_interactivo_burbujas = False
 
             semanas_burbujas = datos_burbujas["Etiqueta semana"].dropna().drop_duplicates().tolist()
 
             with col_semana_burbuja:
-                if modo_interactivo_burbujas:
-                    st.caption("Usa ▶ en la gráfica para animar semanas. Puedes arrastrar y hacer zoom.")
-                    semana_burbuja_estatica = semanas_burbujas[-1]
-                else:
-                    semana_burbuja_estatica = st.selectbox(
-                        "Semana",
-                        options=semanas_burbujas,
-                        index=len(semanas_burbujas) - 1,
-                        key="semana_burbujas_faltas"
-                    )
+                semana_burbuja_estatica = st.selectbox(
+                    "Semana",
+                    options=semanas_burbujas,
+                    index=len(semanas_burbujas) - 1,
+                    key="semana_burbujas_faltas"
+                )
+
+            with col_modo_burbuja:
+                st.caption("Gráfica fija por sucursal. Desliza horizontalmente para verla completa en teléfono.")
 
             fig_burbujas, config_burbujas = crear_grafica_burbujas_faltas(
                 df_burbujas=datos_burbujas,
