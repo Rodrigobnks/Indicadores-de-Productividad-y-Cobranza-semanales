@@ -1610,8 +1610,8 @@ def mostrar_grafica_burbujas_amplia(fig: go.Figure, config: dict | None = None, 
         font=dict(color="#111827", size=15),
         title=dict(
             text="Clientes Totales, Porcentaje de Faltas y Faltas por Sucursal",
-            x=0.02,
-            xanchor="left",
+            x=0.5,
+            xanchor="center",
             font=dict(size=22, color="#111827")
         ),
     )
@@ -1639,17 +1639,23 @@ def mostrar_grafica_burbujas_amplia(fig: go.Figure, config: dict | None = None, 
             border-radius: 22px;
             padding: 12px;
             box-sizing: border-box;
+            text-align: center;
         }}
         .chart-scroll-inner {{
             width: 1350px;
             min-width: 1350px;
+            margin-left: auto;
+            margin-right: auto;
+            display: inline-block;
+            text-align: left;
         }}
         .chart-scroll-hint {{
             font-family: Arial, sans-serif;
             color: #082567;
             font-size: 14px;
             font-weight: 800;
-            margin: 0 0 8px 2px;
+            margin: 0 auto 8px auto;
+            text-align: center;
         }}
         </style>
         <div class="chart-scroll-wrap">
