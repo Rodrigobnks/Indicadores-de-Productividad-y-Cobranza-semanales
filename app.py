@@ -5035,6 +5035,15 @@ def crear_grafica_burbujas_faltas(
     max_x = max(float(df_plot["Clientes Totales"].max()), 1)
     max_y = max(float(df_plot["Porcentaje de Faltas"].max()), 0.01)
 
+    # Evita que las etiquetas de burbujas pegadas al origen tapen el nombre
+    # del cuadrante "Menos clientes y menos faltas". La burbuja sigue visible
+    # y el nombre de la sucursal se conserva en el hover.
+    mascara_etiquetas_origen = (
+        (pd.to_numeric(df_plot["Clientes Totales"], errors="coerce").fillna(0) <= max_x * 0.16)
+        & (pd.to_numeric(df_plot["Porcentaje de Faltas"], errors="coerce").fillna(0) <= max_y * 0.18)
+    )
+    df_plot.loc[mascara_etiquetas_origen, "Etiqueta visible"] = ""
+
     if modo_interactivo:
         fig = px.scatter(
             df_plot,
