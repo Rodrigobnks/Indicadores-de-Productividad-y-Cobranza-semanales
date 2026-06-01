@@ -4461,6 +4461,124 @@ if unidades_negocio:
                     st.session_state["unidad_negocio_app"] = unidad_texto
                     st.rerun()
 
+        # ============================================================
+        # AJUSTE PANTALLA INICIAL: MODO CLARO FORZADO CON MARCA DE AGUA
+        # Este bloque va ANTES de st.stop(), porque la pantalla de selección
+        # se detiene aquí y no ejecuta los ajustes finales del tablero.
+        # ============================================================
+        ruta_landing_marca_agua = buscar_imagen_fondo(NOMBRE_IMAGEN_FONDO)
+        if ruta_landing_marca_agua is not None:
+            landing_fondo_base64 = imagen_a_base64(str(ruta_landing_marca_agua))
+            st.markdown(
+                f"""
+                <style>
+                html,
+                body,
+                .stApp,
+                [data-testid="stAppViewContainer"] {{
+                    color-scheme: light !important;
+                    background-color: #ffffff !important;
+                }}
+
+                .stApp,
+                [data-testid="stAppViewContainer"] {{
+                    background-image:
+                        linear-gradient(rgba(255,255,255,0.84), rgba(255,255,255,0.92)),
+                        url("data:image/png;base64,{landing_fondo_base64}") !important;
+                    background-size: cover !important;
+                    background-position: top center !important;
+                    background-repeat: no-repeat !important;
+                    background-attachment: fixed !important;
+                    background-color: #ffffff !important;
+                }}
+
+                .main .block-container {{
+                    background: rgba(255,255,255,0.90) !important;
+                    color: #111827 !important;
+                    border: 1px solid rgba(226,232,240,0.95) !important;
+                    box-shadow: 0 14px 40px rgba(15, 23, 42, 0.12) !important;
+                }}
+
+                .landing-title,
+                .unidad-name {{
+                    color: #082567 !important;
+                    -webkit-text-fill-color: #082567 !important;
+                    text-shadow: none !important;
+                    opacity: 1 !important;
+                }}
+
+                .landing-subtitle,
+                .unidad-help {{
+                    color: #334155 !important;
+                    -webkit-text-fill-color: #334155 !important;
+                    text-shadow: none !important;
+                    opacity: 1 !important;
+                }}
+
+                .unidad-card {{
+                    background: rgba(255,255,255,0.96) !important;
+                    color: #111827 !important;
+                    border: 1px solid rgba(226,232,240,0.95) !important;
+                    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12) !important;
+                }}
+
+                div.stButton > button,
+                div.stButton > button * {{
+                    background: #082567 !important;
+                    color: #ffffff !important;
+                    -webkit-text-fill-color: #ffffff !important;
+                    border-color: #082567 !important;
+                    opacity: 1 !important;
+                }}
+
+                @media (prefers-color-scheme: dark) {{
+                    html,
+                    body,
+                    .stApp,
+                    [data-testid="stAppViewContainer"] {{
+                        color-scheme: light !important;
+                        background-color: #ffffff !important;
+                    }}
+
+                    .stApp,
+                    [data-testid="stAppViewContainer"] {{
+                        background-image:
+                            linear-gradient(rgba(255,255,255,0.84), rgba(255,255,255,0.92)),
+                            url("data:image/png;base64,{landing_fondo_base64}") !important;
+                        background-size: cover !important;
+                        background-position: top center !important;
+                        background-repeat: no-repeat !important;
+                        background-attachment: fixed !important;
+                        background-color: #ffffff !important;
+                    }}
+
+                    .main .block-container,
+                    .unidad-card {{
+                        background: rgba(255,255,255,0.96) !important;
+                        color: #111827 !important;
+                        border-color: rgba(226,232,240,0.95) !important;
+                        box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12) !important;
+                    }}
+
+                    .landing-title,
+                    .unidad-name {{
+                        color: #082567 !important;
+                        -webkit-text-fill-color: #082567 !important;
+                        text-shadow: none !important;
+                    }}
+
+                    .landing-subtitle,
+                    .unidad-help {{
+                        color: #334155 !important;
+                        -webkit-text-fill-color: #334155 !important;
+                        text-shadow: none !important;
+                    }}
+                }}
+                </style>
+                """,
+                unsafe_allow_html=True
+            )
+
         st.stop()
 
     unidad_negocio_seleccionada = st.session_state.get("unidad_negocio_app", None)
