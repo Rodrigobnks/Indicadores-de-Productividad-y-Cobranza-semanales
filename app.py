@@ -6680,3 +6680,63 @@ st.markdown(
     """,
     unsafe_allow_html=True
 )
+
+# ============================================================
+# AJUSTE FINAL: FONDO BLANCO FORZADO + IMAGEN COMO MARCA DE AGUA
+# TAMBIÉN CUANDO WINDOWS/NAVEGADOR ESTÁ EN MODO OSCURO
+# ============================================================
+ruta_imagen_marca_agua = buscar_imagen_fondo(NOMBRE_IMAGEN_FONDO)
+if ruta_imagen_marca_agua is not None:
+    fondo_marca_agua_base64 = imagen_a_base64(str(ruta_imagen_marca_agua))
+    st.markdown(
+        f"""
+        <style>
+        html,
+        body,
+        .stApp,
+        [data-testid="stAppViewContainer"] {{
+            color-scheme: light !important;
+            background-color: #ffffff !important;
+        }}
+
+        .stApp,
+        [data-testid="stAppViewContainer"] {{
+            background-image:
+                linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.91)),
+                url("data:image/png;base64,{fondo_marca_agua_base64}") !important;
+            background-size: cover !important;
+            background-position: top center !important;
+            background-repeat: no-repeat !important;
+            background-attachment: fixed !important;
+            background-color: #ffffff !important;
+        }}
+
+        @media (prefers-color-scheme: dark) {{
+            html,
+            body,
+            .stApp,
+            [data-testid="stAppViewContainer"] {{
+                color-scheme: light !important;
+                background-color: #ffffff !important;
+            }}
+
+            .stApp,
+            [data-testid="stAppViewContainer"] {{
+                background-image:
+                    linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.91)),
+                    url("data:image/png;base64,{fondo_marca_agua_base64}") !important;
+                background-size: cover !important;
+                background-position: top center !important;
+                background-repeat: no-repeat !important;
+                background-attachment: fixed !important;
+                background-color: #ffffff !important;
+            }}
+
+            header[data-testid="stHeader"] {{
+                background: rgba(255,255,255,0) !important;
+            }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
