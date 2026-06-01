@@ -1573,10 +1573,78 @@ def boton_descargar_xlsx(df_exportar: pd.DataFrame, etiqueta: str, nombre_archiv
         key=key,
     )
 
-def mostrar_grafica_adaptable(fig: go.Figure, config: dict | None = None, key: str | None = None):
+def abrir_grafica_ampliada(clave_grafica: str):
+    """Abre una gráfica guardada en session_state como vista única de pantalla completa."""
+    try:
+        st.query_params["vista"] = "grafica_ampliada"
+        st.query_params["grafica"] = clave_grafica
+    except Exception:
+        st.experimental_set_query_params(vista="grafica_ampliada", grafica=clave_grafica)
+    st.rerun()
+
+
+def cerrar_grafica_ampliada():
+    """Regresa al tablero principal limpiando la vista de gráfica ampliada."""
+    try:
+        if "vista" in st.query_params:
+            del st.query_params["vista"]
+        if "grafica" in st.query_params:
+            del st.query_params["grafica"]
+    except Exception:
+        st.experimental_set_query_params()
+    st.rerun()
+
+
+def mostrar_vista_grafica_ampliada_si_aplica():
+    """Renderiza una sola gráfica ampliada cuando se entra desde el botón móvil."""
+    vista_actual = obtener_query_param("vista", "")
+    if vista_actual != "grafica_ampliada":
+        return False
+
+    clave_grafica = obtener_query_param("grafica", "")
+    datos_grafica = st.session_state.get("graficas_ampliables", {}).get(clave_grafica)
+
+    st.markdown("### Gráfica ampliada")
+
+    if st.button("← Volver al tablero", key="btn_volver_grafica_ampliada", use_container_width=True):
+        cerrar_grafica_ampliada()
+
+    if not datos_grafica:
+        st.info("No encontré la gráfica para ampliar. Regresa al tablero y vuelve a presionar el botón de ampliar.")
+        st.stop()
+
+    fig = datos_grafica.get("fig")
+    config = datos_grafica.get("config", {})
+
+    fig_ampliada = go.Figure(fig)
+    fig_ampliada.update_layout(
+        height=900,
+        margin=dict(t=80, b=80, l=80, r=80),
+        dragmode=False,
+        autosize=True,
+        paper_bgcolor="rgba(255,255,255,1)",
+        plot_bgcolor="rgba(255,255,255,1)",
+    )
+    fig_ampliada.update_xaxes(fixedrange=True)
+    fig_ampliada.update_yaxes(fixedrange=True)
+
+    config_ampliada = dict(config or {})
+    config_ampliada.update({
+        "displayModeBar": False,
+        "scrollZoom": False,
+        "doubleClick": False,
+        "responsive": True,
+        "staticPlot": True,
+    })
+
+    st.plotly_chart(fig_ampliada, use_container_width=True, config=config_ampliada)
+    st.stop()
+
+
+def mostrar_grafica_adaptable(fig: go.Figure, config: dict | None = None, key: str | None = None, permitir_ampliar: bool = True):
     """
     Muestra la gráfica Plotly normal.
-    Se eliminó la lógica de imagen ampliable / kaleido para mantener todo estable.
+    En vista para teléfono agrega un botón para abrir la gráfica como vista única ampliada.
     """
     config = config or {
         "displayModeBar": False,
@@ -1584,7 +1652,26 @@ def mostrar_grafica_adaptable(fig: go.Figure, config: dict | None = None, key: s
         "doubleClick": False,
         "responsive": True,
     }
-    st.plotly_chart(fig, use_container_width=True, config=config)
+
+    config_segura = dict(config)
+    config_segura.update({
+        "displayModeBar": False,
+        "scrollZoom": False,
+        "doubleClick": False,
+        "responsive": True,
+    })
+
+    if key:
+        st.session_state.setdefault("graficas_ampliables", {})[key] = {
+            "fig": fig,
+            "config": config_segura,
+        }
+
+    if st.session_state.get("vista_telefono", False) and permitir_ampliar and key:
+        if st.button("🔍 Ampliar gráfica", key=f"btn_ampliar_{key}", use_container_width=True):
+            abrir_grafica_ampliada(key)
+
+    st.plotly_chart(fig, use_container_width=True, config=config_segura)
 
 def crear_grafica_evolucion_fija(
     evol: pd.DataFrame,
@@ -4290,6 +4377,10 @@ except Exception as e:
     st.error(str(e))
     st.stop()
 
+# Si el usuario presionó "Ampliar gráfica" desde teléfono, se muestra
+# una sola gráfica en pantalla completa antes de cargar el resto del tablero.
+mostrar_vista_grafica_ampliada_si_aplica()
+
 
 # ============================================================
 # VALIDACIONES CARTERA
@@ -5398,31 +5489,24 @@ if modulo_seleccionado == "Cartera":
         if datos_burbujas.empty:
             st.info("No hay datos suficientes para construir la gráfica de burbujas con los filtros actuales.")
         else:
-            with col_modo_burbuja:
-                modo_interactivo_burbujas = st.toggle(
-                    "Activar movimiento, zoom y desplazamiento por fechas",
-                    value=False,
-                    key="modo_interactivo_burbujas_faltas"
-                )
-
+            modo_interactivo_burbujas = False
             semanas_burbujas = datos_burbujas["Etiqueta semana"].dropna().drop_duplicates().tolist()
 
+            with col_modo_burbuja:
+                st.caption("La gráfica de sucursales queda fija; se quitó el movimiento, zoom y desplazamiento por fechas.")
+
             with col_semana_burbuja:
-                if modo_interactivo_burbujas:
-                    st.caption("Usa ▶ en la gráfica para animar semanas. Puedes arrastrar y hacer zoom.")
-                    semana_burbuja_estatica = semanas_burbujas[-1]
-                else:
-                    semana_burbuja_estatica = st.selectbox(
-                        "Semana",
-                        options=semanas_burbujas,
-                        index=len(semanas_burbujas) - 1,
-                        key="semana_burbujas_faltas"
-                    )
+                semana_burbuja_estatica = st.selectbox(
+                    "Semana",
+                    options=semanas_burbujas,
+                    index=len(semanas_burbujas) - 1,
+                    key="semana_burbujas_faltas"
+                )
 
             fig_burbujas, config_burbujas = crear_grafica_burbujas_faltas(
                 df_burbujas=datos_burbujas,
                 nivel_estructura=nivel_burbujas,
-                modo_interactivo=modo_interactivo_burbujas,
+                modo_interactivo=False,
                 semana_estatica=semana_burbuja_estatica,
             )
 
@@ -5435,7 +5519,7 @@ if modulo_seleccionado == "Cartera":
             comentario_burbujas = generar_comentario_burbujas_faltas(
                 df_burbujas=datos_burbujas,
                 nivel_estructura=nivel_burbujas,
-                semana_visible=None if modo_interactivo_burbujas else semana_burbuja_estatica
+                semana_visible=semana_burbuja_estatica
             )
             mostrar_boton_comentario("burbujas_clientes_faltas", comentario_burbujas)
 
