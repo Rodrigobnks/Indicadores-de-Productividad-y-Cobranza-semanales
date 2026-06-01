@@ -6363,7 +6363,13 @@ st.markdown(
 
         .stApp {
             background-color: #ffffff !important;
-            background-image: linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.90)) !important;
+            background-image:
+                linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.90)),
+                var(--app-bg-image) !important;
+            background-size: cover !important;
+            background-position: top center !important;
+            background-repeat: no-repeat !important;
+            background-attachment: fixed !important;
         }
 
         .main .block-container,
