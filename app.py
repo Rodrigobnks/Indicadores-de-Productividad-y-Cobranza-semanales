@@ -2,6 +2,7 @@
 import os
 import base64
 import html
+import uuid
 from pathlib import Path
 from io import BytesIO
 
@@ -1574,6 +1575,133 @@ def boton_descargar_xlsx(df_exportar: pd.DataFrame, etiqueta: str, nombre_archiv
         key=key,
     )
 
+def mostrar_grafica_adaptable(fig: go.Figure, config: dict | None = None, key: str | None = None):
+    """
+    En escritorio muestra la gráfica Plotly normal.
+    En vista de teléfono muestra una imagen clicable; al tocarla se abre ampliada.
+    Requiere kaleido para generar PNG:
+        pip install kaleido
+    Si kaleido no está instalado, se usa Plotly normal como respaldo.
+    """
+    config = config or {"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True}
+
+    if not st.session_state.get("vista_telefono", False):
+        st.plotly_chart(fig, use_container_width=True, config=config)
+        return
+
+    uid = (key or f"grafica_{uuid.uuid4().hex}").replace(" ", "_").replace("-", "_")
+
+    try:
+        fig_movil = go.Figure(fig)
+        fig_movil.update_layout(
+            width=1100,
+            height=max(650, int(fig_movil.layout.height or 650)),
+            margin=dict(t=80, b=80, l=90, r=60),
+            font=dict(size=18, color="#082567"),
+        )
+
+        img_bytes = fig_movil.to_image(format="png", scale=2)
+        img64 = base64.b64encode(img_bytes).decode("utf-8")
+
+        components.html(
+            f"""
+            <style>
+            .mobile-chart-wrap-{uid} {{
+                width: 100%;
+                background: rgba(255,255,255,0.98);
+                border: 1px solid rgba(226,232,240,0.95);
+                border-radius: 18px;
+                padding: 10px;
+                box-shadow: 0 8px 24px rgba(15,23,42,0.10);
+                box-sizing: border-box;
+            }}
+            .mobile-chart-img-{uid} {{
+                width: 100%;
+                height: auto;
+                border-radius: 14px;
+                cursor: zoom-in;
+                display: block;
+            }}
+            .mobile-chart-hint-{uid} {{
+                font-family: Arial, sans-serif;
+                font-size: 13px;
+                font-weight: 800;
+                color: #082567;
+                text-align: center;
+                margin-top: 8px;
+            }}
+            .modal-toggle-{uid} {{
+                display: none;
+            }}
+            .modal-backdrop-{uid} {{
+                display: none;
+                position: fixed;
+                z-index: 999999;
+                inset: 0;
+                background: rgba(2,6,23,0.88);
+                padding: 18px;
+                box-sizing: border-box;
+                overflow: auto;
+            }}
+            .modal-toggle-{uid}:checked + .modal-backdrop-{uid} {{
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }}
+            .modal-content-{uid} {{
+                position: relative;
+                width: 96vw;
+                max-width: 1200px;
+                background: #ffffff;
+                border-radius: 18px;
+                padding: 12px;
+                box-shadow: 0 20px 60px rgba(0,0,0,0.35);
+            }}
+            .modal-content-{uid} img {{
+                width: 100%;
+                height: auto;
+                display: block;
+                border-radius: 12px;
+            }}
+            .modal-close-{uid} {{
+                position: fixed;
+                top: 14px;
+                right: 16px;
+                background: #ffffff;
+                color: #082567;
+                border-radius: 999px;
+                padding: 8px 13px;
+                font-family: Arial, sans-serif;
+                font-size: 22px;
+                font-weight: 900;
+                cursor: pointer;
+                box-shadow: 0 8px 22px rgba(0,0,0,0.25);
+            }}
+            </style>
+
+            <div class="mobile-chart-wrap-{uid}">
+                <label for="modal-{uid}">
+                    <img class="mobile-chart-img-{uid}" src="data:image/png;base64,{img64}" />
+                </label>
+                <div class="mobile-chart-hint-{uid}">Toca la gráfica para ampliarla</div>
+            </div>
+
+            <input class="modal-toggle-{uid}" type="checkbox" id="modal-{uid}">
+            <div class="modal-backdrop-{uid}">
+                <label for="modal-{uid}" class="modal-close-{uid}">×</label>
+                <div class="modal-content-{uid}">
+                    <img src="data:image/png;base64,{img64}" />
+                </div>
+            </div>
+            """,
+            height=360,
+            scrolling=False,
+        )
+
+    except Exception:
+        st.plotly_chart(fig, use_container_width=True, config=config)
+        st.caption("Para mostrar las gráficas como imagen ampliable en teléfono, agrega `kaleido` a requirements.txt.")
+
 def crear_grafica_evolucion_fija(
     evol: pd.DataFrame,
     indicador_grafica: str,
@@ -2019,16 +2147,33 @@ def calcular_resumen_actual_vs_anterior(df_filtrado: pd.DataFrame, indicadores: 
 
 
 def aplicar_formato_tabla(df_tabla: pd.DataFrame):
+    """
+    Formatea tablas para visualización.
+    Cambio importante:
+    - IP se muestra como porcentaje.
+    - Var IP se muestra como puntos porcentuales, no como número entero ni fecha.
+    """
     df_fmt = df_tabla.copy()
 
     for c in df_fmt.columns:
         if c == "Indicador" or df_fmt[c].dtype == "object":
             continue
 
-        if "% Var" in c:
+        nombre_col = str(c).strip()
+        nombre_norm = normalizar_texto_tc(nombre_col).lower()
+
+        # IP directo: 36.4 -> 36.4%
+        if nombre_norm == "ip" or nombre_norm.endswith(" ip"):
+            df_fmt[c] = df_fmt[c].apply(lambda x: "" if pd.isna(x) else f"{float(x):,.1f}%")
+
+        # Variación del IP: -1.2 -> -1.2 pp
+        elif nombre_norm == "var ip" or "var ip" in nombre_norm or "variacion ip" in nombre_norm or "variación ip" in nombre_norm:
+            df_fmt[c] = df_fmt[c].apply(lambda x: "" if pd.isna(x) else f"{float(x):+,.1f} pp")
+
+        elif "% Var" in nombre_col:
             df_fmt[c] = df_fmt[c].apply(lambda x: formato_pct(x, 1, True))
 
-        elif "Variación" in c or c.startswith("Var "):
+        elif "Variación" in nombre_col or nombre_col.startswith("Var "):
             df_fmt[c] = df_fmt[c].apply(formato_variacion)
 
         else:
@@ -5032,10 +5177,10 @@ if modulo_seleccionado == "Cartera":
                     altura=430
                 )
 
-                st.plotly_chart(
+                mostrar_grafica_adaptable(
                     fig_linea,
-                    use_container_width=True,
-                    config=config_linea
+                    config=config_linea,
+                    key="grafica_evolucion_semanal"
                 )
 
         else:
@@ -5143,10 +5288,10 @@ if modulo_seleccionado == "Cartera":
         )
 
         fig_pie.update_layout(dragmode=False)
-        st.plotly_chart(
+        mostrar_grafica_adaptable(
             fig_pie,
-            use_container_width=True,
-            config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True}
+            config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True},
+            key="grafica_pie_coordinadoras"
         )
         comentario_pie = generar_comentario_pie(pie)
 
@@ -5397,10 +5542,10 @@ if modulo_seleccionado == "Cartera":
                 semana_estatica=semana_burbuja_estatica,
             )
 
-            st.plotly_chart(
+            mostrar_grafica_adaptable(
                 fig_burbujas,
-                use_container_width=True,
-                config=config_burbujas
+                config=config_burbujas,
+                key="grafica_burbujas_faltas"
             )
 
             comentario_burbujas = generar_comentario_burbujas_faltas(
@@ -5721,7 +5866,7 @@ else:
                     fig_cump.update_layout(dragmode=False)
                     fig_cump.update_xaxes(fixedrange=True)
                     fig_cump.update_yaxes(fixedrange=True)
-                    st.plotly_chart(fig_cump, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True})
+                    mostrar_grafica_adaptable(fig_cump, config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True}, key="grafica_cumplimiento_cobranza")
 
                     # ------------------------------
                     # Gráfica cuota vs pago
@@ -5743,7 +5888,7 @@ else:
                     fig_cp.update_layout(dragmode=False)
                     fig_cp.update_xaxes(fixedrange=True)
                     fig_cp.update_yaxes(fixedrange=True)
-                    st.plotly_chart(fig_cp, use_container_width=True, config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True})
+                    mostrar_grafica_adaptable(fig_cp, config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True}, key="grafica_cuota_pago_cobranza")
 
                     # ------------------------------
                     # Tabla últimas 5 semanas
