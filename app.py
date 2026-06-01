@@ -1573,78 +1573,10 @@ def boton_descargar_xlsx(df_exportar: pd.DataFrame, etiqueta: str, nombre_archiv
         key=key,
     )
 
-def abrir_grafica_ampliada(clave_grafica: str):
-    """Abre una gráfica guardada en session_state como vista única de pantalla completa."""
-    try:
-        st.query_params["vista"] = "grafica_ampliada"
-        st.query_params["grafica"] = clave_grafica
-    except Exception:
-        st.experimental_set_query_params(vista="grafica_ampliada", grafica=clave_grafica)
-    st.rerun()
-
-
-def cerrar_grafica_ampliada():
-    """Regresa al tablero principal limpiando la vista de gráfica ampliada."""
-    try:
-        if "vista" in st.query_params:
-            del st.query_params["vista"]
-        if "grafica" in st.query_params:
-            del st.query_params["grafica"]
-    except Exception:
-        st.experimental_set_query_params()
-    st.rerun()
-
-
-def mostrar_vista_grafica_ampliada_si_aplica():
-    """Renderiza una sola gráfica ampliada cuando se entra desde el botón móvil."""
-    vista_actual = obtener_query_param("vista", "")
-    if vista_actual != "grafica_ampliada":
-        return False
-
-    clave_grafica = obtener_query_param("grafica", "")
-    datos_grafica = st.session_state.get("graficas_ampliables", {}).get(clave_grafica)
-
-    st.markdown("### Gráfica ampliada")
-
-    if st.button("← Volver al tablero", key="btn_volver_grafica_ampliada", use_container_width=True):
-        cerrar_grafica_ampliada()
-
-    if not datos_grafica:
-        st.info("No encontré la gráfica para ampliar. Regresa al tablero y vuelve a presionar el botón de ampliar.")
-        st.stop()
-
-    fig = datos_grafica.get("fig")
-    config = datos_grafica.get("config", {})
-
-    fig_ampliada = go.Figure(fig)
-    fig_ampliada.update_layout(
-        height=900,
-        margin=dict(t=80, b=80, l=80, r=80),
-        dragmode=False,
-        autosize=True,
-        paper_bgcolor="rgba(255,255,255,1)",
-        plot_bgcolor="rgba(255,255,255,1)",
-    )
-    fig_ampliada.update_xaxes(fixedrange=True)
-    fig_ampliada.update_yaxes(fixedrange=True)
-
-    config_ampliada = dict(config or {})
-    config_ampliada.update({
-        "displayModeBar": False,
-        "scrollZoom": False,
-        "doubleClick": False,
-        "responsive": True,
-        "staticPlot": True,
-    })
-
-    st.plotly_chart(fig_ampliada, use_container_width=True, config=config_ampliada)
-    st.stop()
-
-
-def mostrar_grafica_adaptable(fig: go.Figure, config: dict | None = None, key: str | None = None, permitir_ampliar: bool = True):
+def mostrar_grafica_adaptable(fig: go.Figure, config: dict | None = None, key: str | None = None):
     """
     Muestra la gráfica Plotly normal.
-    En vista para teléfono agrega un botón para abrir la gráfica como vista única ampliada.
+    Se eliminó la lógica de imagen ampliable / kaleido para mantener todo estable.
     """
     config = config or {
         "displayModeBar": False,
@@ -1652,26 +1584,81 @@ def mostrar_grafica_adaptable(fig: go.Figure, config: dict | None = None, key: s
         "doubleClick": False,
         "responsive": True,
     }
+    st.plotly_chart(fig, use_container_width=True, config=config)
 
-    config_segura = dict(config)
-    config_segura.update({
+
+def mostrar_grafica_burbujas_amplia(fig: go.Figure, config: dict | None = None, key: str | None = None):
+    """
+    Muestra la gráfica de burbujas con un ancho fijo grande y scroll horizontal.
+    Esto evita que en teléfono se comprima y se vea chica/amontonada.
+    No usa kaleido ni imágenes: mantiene Plotly interactivo.
+    """
+    config = config or {
         "displayModeBar": False,
         "scrollZoom": False,
         "doubleClick": False,
-        "responsive": True,
-    })
+        "responsive": False,
+    }
 
-    if key:
-        st.session_state.setdefault("graficas_ampliables", {})[key] = {
-            "fig": fig,
-            "config": config_segura,
-        }
+    fig_amplia = go.Figure(fig)
+    fig_amplia.update_layout(
+        autosize=False,
+        width=1180,
+        height=880,
+        margin=dict(t=95, b=90, l=105, r=80),
+        font=dict(color="#111827", size=15),
+        title=dict(
+            text="Clientes Totales, Porcentaje de Faltas y Faltas por Sucursal",
+            x=0.02,
+            xanchor="left",
+            font=dict(size=22, color="#111827")
+        ),
+    )
+    fig_amplia.update_xaxes(title_font=dict(size=18), tickfont=dict(size=14))
+    fig_amplia.update_yaxes(title_font=dict(size=18), tickfont=dict(size=14))
 
-    if st.session_state.get("vista_telefono", False) and permitir_ampliar and key:
-        if st.button("🔍 Ampliar gráfica", key=f"btn_ampliar_{key}", use_container_width=True):
-            abrir_grafica_ampliada(key)
+    html_plot = fig_amplia.to_html(
+        full_html=False,
+        include_plotlyjs="cdn",
+        config=config,
+        default_width="1180px",
+        default_height="880px",
+    )
 
-    st.plotly_chart(fig, use_container_width=True, config=config_segura)
+    components.html(
+        f"""
+        <style>
+        .chart-scroll-wrap {{
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            background: rgba(255,255,255,0.98);
+            border: 1px solid rgba(226,232,240,0.95);
+            border-radius: 22px;
+            padding: 12px;
+            box-sizing: border-box;
+        }}
+        .chart-scroll-inner {{
+            width: 1180px;
+            min-width: 1180px;
+        }}
+        .chart-scroll-hint {{
+            font-family: Arial, sans-serif;
+            color: #082567;
+            font-size: 14px;
+            font-weight: 800;
+            margin: 0 0 8px 2px;
+        }}
+        </style>
+        <div class="chart-scroll-wrap">
+            <div class="chart-scroll-hint">Desliza horizontalmente para ver la gráfica completa.</div>
+            <div class="chart-scroll-inner">{html_plot}</div>
+        </div>
+        """,
+        height=935,
+        scrolling=True,
+    )
 
 def crear_grafica_evolucion_fija(
     evol: pd.DataFrame,
@@ -4377,10 +4364,6 @@ except Exception as e:
     st.error(str(e))
     st.stop()
 
-# Si el usuario presionó "Ampliar gráfica" desde teléfono, se muestra
-# una sola gráfica en pantalla completa antes de cargar el resto del tablero.
-mostrar_vista_grafica_ampliada_si_aplica()
-
 
 # ============================================================
 # VALIDACIONES CARTERA
@@ -4911,6 +4894,17 @@ def crear_grafica_burbujas_faltas(
     df_plot = df_burbujas.copy()
     df_plot["Tamaño burbuja"] = pd.to_numeric(df_plot["Faltas"], errors="coerce").fillna(0).clip(lower=1)
 
+    # Para que la gráfica no se amontone, no se etiqueta cada burbuja.
+    # Se muestran solo las sucursales más relevantes; el resto se consulta con hover.
+    df_plot["Etiqueta visible"] = ""
+    for _, idx_semana in df_plot.groupby("Etiqueta semana").groups.items():
+        tmp = df_plot.loc[list(idx_semana)].copy()
+        idx_etiquetas = set()
+        for col in ["Clientes Totales", "Faltas", "Porcentaje de Faltas"]:
+            idx_etiquetas.update(tmp.nlargest(8, col).index.tolist())
+        idx_etiquetas.update(tmp.nsmallest(4, "Porcentaje de Faltas").index.tolist())
+        df_plot.loc[list(idx_etiquetas), "Etiqueta visible"] = df_plot.loc[list(idx_etiquetas), "Estructura"]
+
     max_x = max(float(df_plot["Clientes Totales"].max()), 1)
     max_y = max(float(df_plot["Porcentaje de Faltas"].max()), 0.01)
 
@@ -4923,8 +4917,8 @@ def crear_grafica_burbujas_faltas(
             animation_frame="Etiqueta semana",
             animation_group="Estructura",
             hover_name="Estructura",
-            text="Estructura",
-            size_max=58,
+            text="Etiqueta visible",
+            size_max=48,
             range_x=[0, max_x * 1.12],
             range_y=[0, min(max_y * 1.18, 1.05)],
             labels={
@@ -4948,8 +4942,8 @@ def crear_grafica_burbujas_faltas(
             y="Porcentaje de Faltas",
             size="Tamaño burbuja",
             hover_name="Estructura",
-            text="Estructura",
-            size_max=58,
+            text="Etiqueta visible",
+            size_max=48,
             range_x=[0, max_x * 1.12],
             range_y=[0, min(max_y * 1.18, 1.05)],
             labels={
@@ -4964,9 +4958,9 @@ def crear_grafica_burbujas_faltas(
     med_y = float(df_plot["Porcentaje de Faltas"].median())
 
     fig.update_traces(
-        textposition="middle center",
-        textfont=dict(size=11, color="#111827"),
-        marker=dict(color="#5aa9f2", line=dict(color="white", width=2), opacity=0.76),
+        textposition="top center",
+        textfont=dict(size=10, color="#111827"),
+        marker=dict(color="#5aa9f2", line=dict(color="white", width=2), opacity=0.70),
         hovertemplate=(
             "<b>%{hovertext}</b><br>"
             "Clientes Totales: %{customdata[0]}<br>"
@@ -4980,29 +4974,29 @@ def crear_grafica_burbujas_faltas(
     fig.add_hline(y=med_y, line_width=2.5, line_color="rgba(80,80,80,0.80)")
 
     fig.add_annotation(
-        x=max_x * 0.04, y=min(max_y * 1.08, 0.98), text="<b><i>Más faltas y menos clientes</i></b>",
-        showarrow=False, xanchor="left", yanchor="top", font=dict(size=16, color="#082567")
+        x=max_x * 0.03, y=min(max_y * 1.10, 0.98), text="<b><i>Más faltas<br>y menos clientes</i></b>",
+        showarrow=False, xanchor="left", yanchor="top", font=dict(size=14, color="#082567")
     )
     fig.add_annotation(
-        x=max_x * 1.08, y=min(max_y * 1.08, 0.98), text="<b><i>Más clientes y más faltas</i></b>",
-        showarrow=False, xanchor="right", yanchor="top", font=dict(size=16, color="#082567")
+        x=max_x * 1.08, y=min(max_y * 1.10, 0.98), text="<b><i>Más clientes<br>y más faltas</i></b>",
+        showarrow=False, xanchor="right", yanchor="top", font=dict(size=14, color="#082567")
     )
     fig.add_annotation(
-        x=max_x * 0.04, y=0, text="<b><i>Menos clientes y menos faltas</i></b>",
-        showarrow=False, xanchor="left", yanchor="bottom", font=dict(size=16, color="#082567")
+        x=max_x * 0.03, y=0, text="<b><i>Menos clientes<br>y menos faltas</i></b>",
+        showarrow=False, xanchor="left", yanchor="bottom", font=dict(size=14, color="#082567")
     )
     fig.add_annotation(
-        x=max_x * 1.08, y=0, text="<b><i>Más clientes y menos faltas</i></b>",
-        showarrow=False, xanchor="right", yanchor="bottom", font=dict(size=16, color="#082567")
+        x=max_x * 1.08, y=0, text="<b><i>Más clientes<br>y menos faltas</i></b>",
+        showarrow=False, xanchor="right", yanchor="bottom", font=dict(size=14, color="#082567")
     )
 
     fig.update_layout(
         title=dict(text="Clientes Totales, Porcentaje de Faltas y Faltas por Sucursal", x=0.0, xanchor="left", font=dict(size=16, color="#111827")),
-        height=650,
-        margin=dict(t=70, b=60, l=70, r=55),
+        height=760,
+        margin=dict(t=90, b=80, l=95, r=70),
         paper_bgcolor="rgba(255,255,255,0)",
         plot_bgcolor="rgba(255,255,255,1)",
-        font=dict(color="#111827", size=12),
+        font=dict(color="#111827", size=14),
         showlegend=False,
         dragmode=False,
     )
@@ -5489,28 +5483,35 @@ if modulo_seleccionado == "Cartera":
         if datos_burbujas.empty:
             st.info("No hay datos suficientes para construir la gráfica de burbujas con los filtros actuales.")
         else:
-            modo_interactivo_burbujas = False
+            with col_modo_burbuja:
+                modo_interactivo_burbujas = st.toggle(
+                    "Activar movimiento, zoom y desplazamiento por fechas",
+                    value=False,
+                    key="modo_interactivo_burbujas_faltas"
+                )
+
             semanas_burbujas = datos_burbujas["Etiqueta semana"].dropna().drop_duplicates().tolist()
 
-            with col_modo_burbuja:
-                st.caption("La gráfica de sucursales queda fija; se quitó el movimiento, zoom y desplazamiento por fechas.")
-
             with col_semana_burbuja:
-                semana_burbuja_estatica = st.selectbox(
-                    "Semana",
-                    options=semanas_burbujas,
-                    index=len(semanas_burbujas) - 1,
-                    key="semana_burbujas_faltas"
-                )
+                if modo_interactivo_burbujas:
+                    st.caption("Usa ▶ en la gráfica para animar semanas. Puedes arrastrar y hacer zoom.")
+                    semana_burbuja_estatica = semanas_burbujas[-1]
+                else:
+                    semana_burbuja_estatica = st.selectbox(
+                        "Semana",
+                        options=semanas_burbujas,
+                        index=len(semanas_burbujas) - 1,
+                        key="semana_burbujas_faltas"
+                    )
 
             fig_burbujas, config_burbujas = crear_grafica_burbujas_faltas(
                 df_burbujas=datos_burbujas,
                 nivel_estructura=nivel_burbujas,
-                modo_interactivo=False,
+                modo_interactivo=modo_interactivo_burbujas,
                 semana_estatica=semana_burbuja_estatica,
             )
 
-            mostrar_grafica_adaptable(
+            mostrar_grafica_burbujas_amplia(
                 fig_burbujas,
                 config=config_burbujas,
                 key="grafica_burbujas_faltas"
@@ -5519,7 +5520,7 @@ if modulo_seleccionado == "Cartera":
             comentario_burbujas = generar_comentario_burbujas_faltas(
                 df_burbujas=datos_burbujas,
                 nivel_estructura=nivel_burbujas,
-                semana_visible=semana_burbuja_estatica
+                semana_visible=None if modo_interactivo_burbujas else semana_burbuja_estatica
             )
             mostrar_boton_comentario("burbujas_clientes_faltas", comentario_burbujas)
 
