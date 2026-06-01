@@ -2,14 +2,12 @@
 import os
 import base64
 import html
-import uuid
 from pathlib import Path
 from io import BytesIO
 
 import numpy as np
 import pandas as pd
 import streamlit as st
-import streamlit.components.v1 as components
 import plotly.express as px
 import plotly.graph_objects as go
 
@@ -1577,130 +1575,16 @@ def boton_descargar_xlsx(df_exportar: pd.DataFrame, etiqueta: str, nombre_archiv
 
 def mostrar_grafica_adaptable(fig: go.Figure, config: dict | None = None, key: str | None = None):
     """
-    En escritorio muestra la gráfica Plotly normal.
-    En vista de teléfono muestra una imagen clicable; al tocarla se abre ampliada.
-    Requiere kaleido para generar PNG:
-        pip install kaleido
-    Si kaleido no está instalado, se usa Plotly normal como respaldo.
+    Muestra la gráfica Plotly normal.
+    Se eliminó la lógica de imagen ampliable / kaleido para mantener todo estable.
     """
-    config = config or {"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True}
-
-    if not st.session_state.get("vista_telefono", False):
-        st.plotly_chart(fig, use_container_width=True, config=config)
-        return
-
-    uid = (key or f"grafica_{uuid.uuid4().hex}").replace(" ", "_").replace("-", "_")
-
-    try:
-        fig_movil = go.Figure(fig)
-        fig_movil.update_layout(
-            width=1100,
-            height=max(650, int(fig_movil.layout.height or 650)),
-            margin=dict(t=80, b=80, l=90, r=60),
-            font=dict(size=18, color="#082567"),
-        )
-
-        img_bytes = fig_movil.to_image(format="png", scale=2)
-        img64 = base64.b64encode(img_bytes).decode("utf-8")
-
-        components.html(
-            f"""
-            <style>
-            .mobile-chart-wrap-{uid} {{
-                width: 100%;
-                background: rgba(255,255,255,0.98);
-                border: 1px solid rgba(226,232,240,0.95);
-                border-radius: 18px;
-                padding: 10px;
-                box-shadow: 0 8px 24px rgba(15,23,42,0.10);
-                box-sizing: border-box;
-            }}
-            .mobile-chart-img-{uid} {{
-                width: 100%;
-                height: auto;
-                border-radius: 14px;
-                cursor: zoom-in;
-                display: block;
-            }}
-            .mobile-chart-hint-{uid} {{
-                font-family: Arial, sans-serif;
-                font-size: 13px;
-                font-weight: 800;
-                color: #082567;
-                text-align: center;
-                margin-top: 8px;
-            }}
-            .modal-toggle-{uid} {{
-                display: none;
-            }}
-            .modal-backdrop-{uid} {{
-                display: none;
-                position: fixed;
-                z-index: 999999;
-                inset: 0;
-                background: rgba(2,6,23,0.88);
-                padding: 18px;
-                box-sizing: border-box;
-                overflow: auto;
-            }}
-            .modal-toggle-{uid}:checked + .modal-backdrop-{uid} {{
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }}
-            .modal-content-{uid} {{
-                position: relative;
-                width: 96vw;
-                max-width: 1200px;
-                background: #ffffff;
-                border-radius: 18px;
-                padding: 12px;
-                box-shadow: 0 20px 60px rgba(0,0,0,0.35);
-            }}
-            .modal-content-{uid} img {{
-                width: 100%;
-                height: auto;
-                display: block;
-                border-radius: 12px;
-            }}
-            .modal-close-{uid} {{
-                position: fixed;
-                top: 14px;
-                right: 16px;
-                background: #ffffff;
-                color: #082567;
-                border-radius: 999px;
-                padding: 8px 13px;
-                font-family: Arial, sans-serif;
-                font-size: 22px;
-                font-weight: 900;
-                cursor: pointer;
-                box-shadow: 0 8px 22px rgba(0,0,0,0.25);
-            }}
-            </style>
-
-            <div class="mobile-chart-wrap-{uid}">
-                <label for="modal-{uid}">
-                    <img class="mobile-chart-img-{uid}" src="data:image/png;base64,{img64}" />
-                </label>
-                <div class="mobile-chart-hint-{uid}">Toca la gráfica para ampliarla</div>
-            </div>
-
-            <input class="modal-toggle-{uid}" type="checkbox" id="modal-{uid}">
-            <div class="modal-backdrop-{uid}">
-                <label for="modal-{uid}" class="modal-close-{uid}">×</label>
-                <div class="modal-content-{uid}">
-                    <img src="data:image/png;base64,{img64}" />
-                </div>
-            </div>
-            """,
-            height=360,
-            scrolling=False,
-        )
-
-    except Exception:
-        st.plotly_chart(fig, use_container_width=True, config=config)
-        st.caption("Para mostrar las gráficas como imagen ampliable en teléfono, agrega `kaleido` a requirements.txt.")
+    config = config or {
+        "displayModeBar": False,
+        "scrollZoom": False,
+        "doubleClick": False,
+        "responsive": True,
+    }
+    st.plotly_chart(fig, use_container_width=True, config=config)
 
 def crear_grafica_evolucion_fija(
     evol: pd.DataFrame,
