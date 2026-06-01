@@ -261,9 +261,10 @@ def aplicar_fondo_pagina(nombre_imagen: str):
         f"""
         <style>
         .stApp {{
+            --app-bg-image: url("data:image/png;base64,{fondo_base64}");
             background-image:
                 linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.90)),
-                url("data:image/png;base64,{fondo_base64}");
+                var(--app-bg-image);
             background-size: cover;
             background-position: top center;
             background-repeat: no-repeat;
@@ -1000,9 +1001,14 @@ st.markdown(
         }
 
         .stApp {
-            background-image: linear-gradient(rgba(15,23,42,0.80), rgba(15,23,42,0.88)) !important;
+            background-image:
+                linear-gradient(rgba(15,23,42,0.80), rgba(15,23,42,0.88)),
+                var(--app-bg-image) !important;
             background-color: #020617 !important;
-            background-attachment: scroll !important;
+            background-size: cover !important;
+            background-position: top center !important;
+            background-repeat: no-repeat !important;
+            background-attachment: fixed !important;
         }
 
         header[data-testid="stHeader"] {
