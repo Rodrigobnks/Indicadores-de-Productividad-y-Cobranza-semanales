@@ -2196,34 +2196,53 @@ def aplicar_formato_tabla(df_tabla: pd.DataFrame):
     """
     Formatea tablas para visualización.
     Cambio importante:
-    - IP se muestra como porcentaje.
-    - Var IP se muestra como puntos porcentuales, no como número entero ni fecha.
+    - IP se muestra como porcentaje cuando aparece como indicador en filas.
+    - La variación de IP se muestra como puntos porcentuales, no como número entero.
     """
-    df_fmt = df_tabla.copy()
+    if df_tabla is None or df_tabla.empty:
+        return pd.DataFrame()
 
-    for c in df_fmt.columns:
-        if c == "Indicador" or df_fmt[c].dtype == "object":
-            continue
+    df_fmt = df_tabla.copy().astype(object)
 
-        nombre_col = str(c).strip()
-        nombre_norm = normalizar_texto_tc(nombre_col).lower()
+    for idx, fila in df_tabla.iterrows():
+        indicador = str(fila.get("Indicador", ""))
+        indicador_norm = normalizar_texto_tc(indicador).lower()
+        es_ip = indicador_norm == "ip"
+        es_pct = indicador.strip().startswith("%") or "cumplimiento" in indicador_norm
 
-        # IP directo: 36.4 -> 36.4%
-        if nombre_norm == "ip" or nombre_norm.endswith(" ip"):
-            df_fmt[c] = df_fmt[c].apply(lambda x: "" if pd.isna(x) else f"{float(x):,.1f}%")
+        for col in df_fmt.columns:
+            if col == "Indicador":
+                df_fmt.at[idx, col] = indicador
+                continue
 
-        # Variación del IP: -1.2 -> -1.2 pp
-        elif nombre_norm == "var ip" or "var ip" in nombre_norm or "variacion ip" in nombre_norm or "variación ip" in nombre_norm:
-            df_fmt[c] = df_fmt[c].apply(lambda x: "" if pd.isna(x) else f"{float(x):+,.1f} pp")
+            valor = fila.get(col)
+            nombre_col = str(col).strip()
 
-        elif "% Var" in nombre_col:
-            df_fmt[c] = df_fmt[c].apply(lambda x: formato_pct(x, 1, True))
+            try:
+                if es_ip:
+                    if "Variación" in nombre_col or nombre_col.startswith("Var "):
+                        df_fmt.at[idx, col] = "" if pd.isna(valor) else f"{float(valor):+,.1f} pp"
+                    elif "% Var" in nombre_col:
+                        df_fmt.at[idx, col] = formato_pct(valor, 1, True)
+                    else:
+                        df_fmt.at[idx, col] = "" if pd.isna(valor) else f"{float(valor):,.1f}%"
 
-        elif "Variación" in nombre_col or nombre_col.startswith("Var "):
-            df_fmt[c] = df_fmt[c].apply(formato_variacion)
+                elif es_pct:
+                    if "Variación" in nombre_col or "% Var" in nombre_col or nombre_col.startswith("Var "):
+                        df_fmt.at[idx, col] = formato_pct(valor, 2, True)
+                    else:
+                        df_fmt.at[idx, col] = formato_pct(valor, 2, False)
 
-        else:
-            df_fmt[c] = df_fmt[c].apply(formato_numero)
+                elif "% Var" in nombre_col:
+                    df_fmt.at[idx, col] = formato_pct(valor, 1, True)
+
+                elif "Variación" in nombre_col or nombre_col.startswith("Var "):
+                    df_fmt.at[idx, col] = formato_variacion(valor)
+
+                else:
+                    df_fmt.at[idx, col] = formato_numero(valor)
+            except Exception:
+                df_fmt.at[idx, col] = "" if pd.isna(valor) else str(valor)
 
     return df_fmt
 
@@ -3610,6 +3629,11 @@ def _direccion_favorable_indicador(indicador: str) -> int:
 
 def _formato_valor_resumen_ia(indicador: str, valor) -> str:
     nombre = normalizar_texto_tc(indicador).lower()
+    if nombre == "ip":
+        try:
+            return "" if pd.isna(valor) else f"{float(valor):+,.1f} pp"
+        except Exception:
+            return str(valor)
     if "cumplimiento" in nombre or str(indicador).strip().startswith("%"):
         return formato_pct(valor, 2, True)
     return formato_variacion(valor)
@@ -3722,7 +3746,7 @@ def generar_resumen_ia_paises(
     if not positivos.empty:
         top_avances = positivos.sort_values("Variación vs sem ant", ascending=False).head(3)
         avances_txt = ", ".join([
-            f"{r['Indicador']} ({formato_variacion(r['Variación vs sem ant'])})"
+            f"{r['Indicador']} ({_formato_valor_resumen_ia(r['Indicador'], r['Variación vs sem ant'])})"
             for _, r in top_avances.iterrows()
         ])
         texto.append(
@@ -3732,7 +3756,7 @@ def generar_resumen_ia_paises(
     if not negativos.empty:
         top_oportunidades = negativos.sort_values("Variación vs sem ant", ascending=True).head(3)
         oportunidades_txt = ", ".join([
-            f"{r['Indicador']} ({formato_variacion(r['Variación vs sem ant'])})"
+            f"{r['Indicador']} ({_formato_valor_resumen_ia(r['Indicador'], r['Variación vs sem ant'])})"
             for _, r in top_oportunidades.iterrows()
         ])
         texto.append(
