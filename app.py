@@ -1667,6 +1667,87 @@ def mostrar_grafica_burbujas_amplia(fig: go.Figure, config: dict | None = None, 
         scrolling=True,
     )
 
+
+
+def mostrar_grafica_cobranza_amplia(
+    fig: go.Figure,
+    titulo: str = "Gráfica de cobranza",
+    ancho: int = 1350,
+    alto: int = 620,
+    config: dict | None = None,
+    key: str | None = None
+):
+    """
+    Muestra las gráficas de Cobranza con ancho fijo y desplazamiento horizontal,
+    igual que la gráfica de burbujas de Cartera. Esto evita que en teléfono
+    se compriman las semanas, etiquetas y leyendas.
+    """
+    config = config or {
+        "displayModeBar": False,
+        "scrollZoom": False,
+        "doubleClick": False,
+        "responsive": False,
+    }
+
+    fig_amplia = go.Figure(fig)
+    fig_amplia.update_layout(
+        autosize=False,
+        width=ancho,
+        height=alto,
+        margin=dict(t=85, b=95, l=90, r=fig.layout.margin.r if fig.layout.margin and fig.layout.margin.r else 80),
+        font=dict(color="#082567", size=13),
+    )
+    fig_amplia.update_xaxes(tickfont=dict(size=12), title_font=dict(size=14))
+    fig_amplia.update_yaxes(tickfont=dict(size=12), title_font=dict(size=14))
+
+    html_plot = fig_amplia.to_html(
+        full_html=False,
+        include_plotlyjs="cdn",
+        config=config,
+        default_width=f"{ancho}px",
+        default_height=f"{alto}px",
+    )
+
+    components.html(
+        f"""
+        <style>
+        .chart-scroll-wrap-cobranza {{
+            width: 100%;
+            overflow-x: auto;
+            overflow-y: hidden;
+            -webkit-overflow-scrolling: touch;
+            background: rgba(255,255,255,0.98);
+            border: 1px solid rgba(226,232,240,0.95);
+            border-radius: 22px;
+            padding: 12px;
+            box-sizing: border-box;
+            text-align: center;
+        }}
+        .chart-scroll-inner-cobranza {{
+            width: {ancho}px;
+            min-width: {ancho}px;
+            margin-left: auto;
+            margin-right: auto;
+            display: inline-block;
+            text-align: left;
+        }}
+        .chart-scroll-hint-cobranza {{
+            font-family: Arial, sans-serif;
+            color: #082567;
+            font-size: 14px;
+            font-weight: 800;
+            margin: 0 auto 8px auto;
+            text-align: center;
+        }}
+        </style>
+        <div class="chart-scroll-wrap-cobranza">
+            <div class="chart-scroll-hint-cobranza">Desliza horizontalmente para ver la gráfica completa.</div>
+            <div class="chart-scroll-inner-cobranza">{html_plot}</div>
+        </div>
+        """,
+        height=alto + 70,
+        scrolling=True,
+    )
 def crear_grafica_evolucion_fija(
     evol: pd.DataFrame,
     indicador_grafica: str,
@@ -5967,7 +6048,14 @@ else:
                     fig_cump.update_layout(dragmode=False)
                     fig_cump.update_xaxes(fixedrange=True)
                     fig_cump.update_yaxes(fixedrange=True)
-                    mostrar_grafica_adaptable(fig_cump, config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True}, key="grafica_cumplimiento_cobranza")
+                    mostrar_grafica_cobranza_amplia(
+                        fig_cump,
+                        titulo="% Cumplimiento semanal",
+                        ancho=1350,
+                        alto=520,
+                        config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": False},
+                        key="grafica_cumplimiento_cobranza"
+                    )
 
                     # ------------------------------
                     # Gráfica cuota vs pago
@@ -5989,7 +6077,14 @@ else:
                     fig_cp.update_layout(dragmode=False)
                     fig_cp.update_xaxes(fixedrange=True)
                     fig_cp.update_yaxes(fixedrange=True)
-                    mostrar_grafica_adaptable(fig_cp, config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True}, key="grafica_cuota_pago_cobranza")
+                    mostrar_grafica_cobranza_amplia(
+                        fig_cp,
+                        titulo="Cuota total vs Pago total",
+                        ancho=1450,
+                        alto=650,
+                        config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": False},
+                        key="grafica_cuota_pago_cobranza"
+                    )
 
                     # ------------------------------
                     # Tabla últimas 5 semanas
