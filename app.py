@@ -4846,18 +4846,13 @@ for col_filtro, col_streamlit in [("Marca", col_marca), ("País", col_pais)]:
         with col_streamlit:
             st.caption(f"Sin columna {col_filtro}")
 
-# Filtro adicional solo para Cartera: permite quitar coordinadoras secundarias de todos los KPIs,
-# tablas, gráficas y análisis de la sección de cartera.
+# Filtro adicional de coordinadoras DESACTIVADO.
+# Antes permitía elegir "Sin secundarias" y eso reducía el total de coordinadoras.
+# Ahora siempre se conservan TODAS las coordinadoras para KPIs, tablas, gráficas y análisis.
 excluir_secundarias_cartera = False
 with col_secundarias:
     if modulo_seleccionado == "Cartera" and "Tipo Coordinadora" in df.columns:
-        opcion_secundarias = st.selectbox(
-            "Coordinadoras",
-            options=["Todas", "Sin secundarias"],
-            index=0,
-            key="filtro_coordinadoras_secundarias"
-        )
-        excluir_secundarias_cartera = opcion_secundarias == "Sin secundarias"
+        st.caption("Coordinadoras: Todas")
     else:
         st.caption("")
 
@@ -4890,7 +4885,9 @@ df = aplicar_tipo_cambio_mxn(df, modo_moneda)
 if df_cobranza is not None:
     df_cobranza = aplicar_tipo_cambio_mxn(df_cobranza, modo_moneda)
 
-if modulo_seleccionado == "Cartera" and excluir_secundarias_cartera and "Tipo Coordinadora" in df.columns:
+# No se excluyen coordinadoras secundarias.
+# Se deja el bloque desactivado para conservar el resto del script intacto.
+if False and modulo_seleccionado == "Cartera" and excluir_secundarias_cartera and "Tipo Coordinadora" in df.columns:
     df = df[df["Tipo Coordinadora"].astype(str).str.strip().str.lower() != "secundaria"].copy()
 
 # Siempre se usan todos los indicadores disponibles; ya no hay selector múltiple.
