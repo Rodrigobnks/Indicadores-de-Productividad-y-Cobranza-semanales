@@ -2527,6 +2527,17 @@ def generar_comentario_top_bottom_cobranza(tabla_top_bottom, tipo_top_bottom, ni
 
 
 def crear_llave_coordinadora_marca(df_base: pd.DataFrame, columna_id: str = "coordinadora_id") -> pd.DataFrame:
+    """
+    Crea una llave de movimiento SIN perder coordinadoras/registros.
+
+    Antes la llave era coordinadora_id + País + Marca. Eso agrupaba como una sola
+    coordinadora los casos donde el mismo ID aparecía en más de una Ruta, y por eso
+    la matriz de desplazamiento no cuadraba con el total de la base.
+
+    Ahora la llave incluye campos de estructura disponibles, especialmente Ruta.
+    Además agrega un consecutivo por semana para no perder filas incluso si existen
+    registros repetidos con la misma combinación de estructura.
+    """
     df_tmp = df_base.copy()
 
     if columna_id not in df_tmp.columns:
@@ -2534,15 +2545,41 @@ def crear_llave_coordinadora_marca(df_base: pd.DataFrame, columna_id: str = "coo
 
     columnas_llave = [columna_id]
 
-    for c in ["País", "Marca"]:
-        if c in df_tmp.columns:
+    # Ruta es clave para PRESICO porque hay coordinadoras con el mismo ID/País/Marca
+    # en rutas distintas. Se incluyen más columnas sólo si existen en la base.
+    for c in ["Unidad de Negocio", "País", "Marca", "Subdireccion", "Zona", "Sucursal", "Ruta"]:
+        if c in df_tmp.columns and c not in columnas_llave:
             columnas_llave.append(c)
 
-    df_tmp["_llave_coordinadora_marca"] = (
+    df_tmp["_base_llave_coordinadora_marca"] = (
         df_tmp[columnas_llave]
-        .astype(str)
         .fillna("")
+        .astype(str)
+        .apply(lambda s: s.str.strip())
         .agg("|".join, axis=1)
+    )
+
+    # Consecutivo por semana + llave base para conservar TODOS los registros.
+    # Sin esto, si hubiera dos filas exactamente iguales, también se compactarían.
+    if "Semana del año" in df_tmp.columns:
+        df_tmp["_consecutivo_llave"] = (
+            df_tmp
+            .groupby(["Semana del año", "_base_llave_coordinadora_marca"], dropna=False)
+            .cumcount()
+            .astype(str)
+        )
+    else:
+        df_tmp["_consecutivo_llave"] = (
+            df_tmp
+            .groupby(["_base_llave_coordinadora_marca"], dropna=False)
+            .cumcount()
+            .astype(str)
+        )
+
+    df_tmp["_llave_coordinadora_marca"] = (
+        df_tmp["_base_llave_coordinadora_marca"]
+        + "|OCURRENCIA_"
+        + df_tmp["_consecutivo_llave"]
     )
 
     return df_tmp
@@ -2554,11 +2591,28 @@ def obtener_categoria_unica_por_semana(
     columna_id: str = "coordinadora_id",
     columna_categoria: str = "Tipo Coordinadora"
 ):
+    """
+    Devuelve una fila por registro de la semana, no una fila por coordinadora única.
+
+    Antes se hacía drop_duplicates por llave, lo cual reducía el total de coordinadoras
+    en la matriz. Para que el total cuadre con la base, aquí se conserva cada registro.
+    """
     df_semana = df_base[df_base["Semana del año"] == semana].copy()
 
     columnas_necesarias = [columna_id, columna_categoria]
 
-    for c in ["coordinadora_id", "País", "Marca"]:
+    for c in [
+        "coordinadora_id",
+        "Unidad de Negocio",
+        "País",
+        "Marca",
+        "Subdireccion",
+        "Zona",
+        "Sucursal",
+        "Ruta",
+        "_base_llave_coordinadora_marca",
+        "_consecutivo_llave",
+    ]:
         if c in df_semana.columns and c not in columnas_necesarias:
             columnas_necesarias.append(c)
 
@@ -2569,28 +2623,7 @@ def obtener_categoria_unica_por_semana(
     if df_semana.empty:
         return pd.DataFrame(columns=columnas_necesarias)
 
-    prioridad = {
-        "Productiva": 4,
-        "En Desarrollo": 3,
-        "Improductiva": 2,
-        "Secundaria": 1,
-    }
-
-    df_semana["_prioridad_categoria"] = (
-        df_semana[columna_categoria]
-        .map(prioridad)
-        .fillna(0)
-    )
-
-    salida = (
-        df_semana
-        .sort_values([columna_id, "_prioridad_categoria"], ascending=[True, False])
-        .drop_duplicates(subset=[columna_id], keep="first")
-        .drop(columns=["_prioridad_categoria"])
-        .reset_index(drop=True)
-    )
-
-    return salida
+    return df_semana.reset_index(drop=True)
 
 
 def matriz_desplazamiento_coordinadoras(
@@ -2668,7 +2701,6 @@ def matriz_desplazamiento_coordinadoras(
     matriz.columns.name = "Tipo Coordinadora Semana Actual"
 
     return movimientos, matriz
-
 
 def estilo_matriz_desplazamiento(df_matriz: pd.DataFrame):
     ranking = {
@@ -2790,11 +2822,8 @@ def tabla_improductivas_por_marca(movimientos: pd.DataFrame) -> pd.DataFrame:
     else:
         mov["Marca"] = "Sin marca"
 
-    if "_llave_coordinadora_marca" in mov.columns:
-        conteo = mov.groupby("Marca", dropna=False)["_llave_coordinadora_marca"].nunique().reset_index()
-    else:
-        conteo = mov.groupby("Marca", dropna=False).size().reset_index(name="_conteo")
-        conteo = conteo.rename(columns={"_conteo": "_llave_coordinadora_marca"})
+    # Cuenta registros de movimiento, no llaves únicas, para no excluir coordinadoras.
+    conteo = mov.groupby("Marca", dropna=False).size().reset_index(name="_llave_coordinadora_marca")
 
     conteo = conteo.rename(columns={"_llave_coordinadora_marca": "Coordinadoras que pasaron a Improductiva"})
     conteo["Marca"] = conteo["Marca"].fillna("Sin marca").astype(str)
@@ -4846,18 +4875,13 @@ for col_filtro, col_streamlit in [("Marca", col_marca), ("País", col_pais)]:
         with col_streamlit:
             st.caption(f"Sin columna {col_filtro}")
 
-# Filtro adicional solo para Cartera: permite quitar coordinadoras secundarias de todos los KPIs,
-# tablas, gráficas y análisis de la sección de cartera.
+# Filtro adicional de coordinadoras DESACTIVADO.
+# Antes permitía elegir "Sin secundarias" y eso reducía el total de coordinadoras.
+# Ahora siempre se conservan TODAS las coordinadoras para KPIs, tablas, gráficas y análisis.
 excluir_secundarias_cartera = False
 with col_secundarias:
     if modulo_seleccionado == "Cartera" and "Tipo Coordinadora" in df.columns:
-        opcion_secundarias = st.selectbox(
-            "Coordinadoras",
-            options=["Todas", "Sin secundarias"],
-            index=0,
-            key="filtro_coordinadoras_secundarias"
-        )
-        excluir_secundarias_cartera = opcion_secundarias == "Sin secundarias"
+        st.caption("Coordinadoras: Todas")
     else:
         st.caption("")
 
@@ -4890,7 +4914,9 @@ df = aplicar_tipo_cambio_mxn(df, modo_moneda)
 if df_cobranza is not None:
     df_cobranza = aplicar_tipo_cambio_mxn(df_cobranza, modo_moneda)
 
-if modulo_seleccionado == "Cartera" and excluir_secundarias_cartera and "Tipo Coordinadora" in df.columns:
+# No se excluyen coordinadoras secundarias.
+# Se deja el bloque desactivado para conservar el resto del script intacto.
+if False and modulo_seleccionado == "Cartera" and excluir_secundarias_cartera and "Tipo Coordinadora" in df.columns:
     df = df[df["Tipo Coordinadora"].astype(str).str.strip().str.lower() != "secundaria"].copy()
 
 # Siempre se usan todos los indicadores disponibles; ya no hay selector múltiple.
@@ -5400,35 +5426,22 @@ if modulo_seleccionado == "Cartera":
     with col2:
         st.subheader(f"Distribución por tipo de coordinadora | Última semana: {semana_ultima_historial}")
 
-        if "coordinadora_id" in df_filtrado_original.columns:
-            df_pie_base = crear_llave_coordinadora_marca(
-                df_base=df_filtrado_original,
-                columna_id="coordinadora_id"
-            )
+        # CORRECCIÓN:
+        # Antes esta gráfica hacía una llave coordinadora_id + País + Marca y después
+        # quitaba duplicados. En PRESICO México eso reducía el total porque existen
+        # coordinadoras con el mismo ID/País/Marca en más de una Ruta.
+        # Para no excluir ninguna coordinadora/registro de la base, aquí se cuenta
+        # directamente cada fila de la última semana filtrada.
+        df_sem_actual = df_filtrado_original[
+            df_filtrado_original["Semana del año"] == semana_ultima_historial
+        ].copy()
 
-            df_sem_actual_unico = obtener_categoria_unica_por_semana(
-                df_base=df_pie_base,
-                semana=semana_ultima_historial,
-                columna_id="_llave_coordinadora_marca",
-                columna_categoria="Tipo Coordinadora"
-            )
-
-            pie = (
-                df_sem_actual_unico
-                .groupby("Tipo Coordinadora", dropna=False)["_llave_coordinadora_marca"]
-                .nunique()
-                .reset_index(name="Coordinadoras")
-            )
-
-        else:
-            df_sem_actual = df_filtrado_original[df_filtrado_original["Semana del año"] == semana_ultima_historial].copy()
-
-            pie = (
-                df_sem_actual
-                .groupby("Tipo Coordinadora", dropna=False)
-                .size()
-                .reset_index(name="Coordinadoras")
-            )
+        pie = (
+            df_sem_actual
+            .groupby("Tipo Coordinadora", dropna=False)
+            .size()
+            .reset_index(name="Coordinadoras")
+        )
 
         pie = pie.sort_values("Coordinadoras", ascending=False).copy()
         pie["Etiqueta"] = pie.apply(
