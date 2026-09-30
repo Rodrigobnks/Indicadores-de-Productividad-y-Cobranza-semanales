@@ -33,7 +33,7 @@ except NameError:
 # Cartera continúa leyéndose desde Base.xlsx.
 RUTA_DEFAULT = str(CARPETA_APP / "Base.xlsx")
 
-# Los Parquet semanales deben subirse al repositorio en data/cobranza.
+# Los Parquet semanales están en la carpeta Cobranza del repositorio.
 RUTA_COBRANZA_PARQUET = CARPETA_APP / "Cobranza"
 
 # Fórmulas equivalentes a las medidas del modelo de Cobranza.
@@ -1460,7 +1460,7 @@ def firma_archivos_cobranza_parquet(ruta_carpeta: str) -> tuple:
         raise FileNotFoundError(
             "No encontré la carpeta de Parquet de Cobranza:\n"
             f"{carpeta}\n\n"
-            "Crea data/cobranza junto al script y sube allí los archivos .parquet."
+            "Crea la carpeta Cobranza junto al script y sube allí los archivos .parquet."
         )
 
     archivos_por_periodo: dict[tuple[int, int], Path] = {}
@@ -2239,17 +2239,18 @@ def aplicar_filtros_cobranza_desde_cartera(
 
     for col in columnas_puente:
         if col in df_tmp.columns and col in df_ref.columns:
-            valores_validos = (
-                df_ref[col]
-                .dropna()
-                .astype(str)
-                .str.strip()
-                .unique()
-                .tolist()
-            )
+            # Cartera y Cobranza pueden escribir el mismo catálogo de forma
+            # distinta (por ejemplo, "México" frente a "Mexico"). Comparamos
+            # una versión normalizada para ignorar acentos, mayúsculas y espacios.
+            valores_validos = {
+                normalizar_texto_tc(valor)
+                for valor in df_ref[col].dropna().tolist()
+                if normalizar_texto_tc(valor)
+            }
 
             if valores_validos:
-                df_tmp = df_tmp[df_tmp[col].astype(str).str.strip().isin(valores_validos)]
+                valores_cobranza = df_tmp[col].apply(normalizar_texto_tc)
+                df_tmp = df_tmp[valores_cobranza.isin(valores_validos)].copy()
 
     return df_tmp
 
