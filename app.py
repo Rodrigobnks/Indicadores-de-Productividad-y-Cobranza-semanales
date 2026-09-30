@@ -2,6 +2,7 @@
 import os
 import base64
 import html
+import re
 from pathlib import Path
 from io import BytesIO
 
@@ -24,6 +25,27 @@ st.set_page_config(
 
 # Usa Excel, no CSV, porque ahora la base trae 2 hojas: Cartera y Cobranza.
 RUTA_DEFAULT = "Base.xlsx"
+
+# Cobranza se toma de los históricos semanales en Parquet sincronizados por
+# OneDrive. Cartera continúa leyéndose desde RUTA_DEFAULT.
+RUTA_COBRANZA_PARQUET = Path(
+    r"C:\Users\EQUIPO\OneDrive\TARS\COBRANZA\Consolidado_BI"
+    r"\Moneda Local Parquet\Semanal"
+)
+
+# Fórmulas equivalentes a las medidas del modelo de Cobranza.
+COLUMNAS_PARQUET_CUOTA_TOTAL = [
+    "Cuota_cobranza_del_dia",
+    "Cuota_cobranza_1_sem",
+    "Pago_Adelanto",
+]
+
+COLUMNAS_PARQUET_RECUPERACION = [
+    "Pago_cobranza_del_dia",
+    "Pago_Pendiente_sin_atraso",
+    "Pago_Adelanto",
+    "Recuperado_cobranza_1_sem",
+]
 
 # Nombre de la imagen de fondo. Debe estar en la misma carpeta que este script.
 NOMBRE_IMAGEN_FONDO = "ChatGPT Image 19 may 2026, 11_58_09 a.m."
@@ -1410,6 +1432,160 @@ def limpiar_datos(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _periodo_desde_nombre_parquet(ruta: Path) -> tuple[int, int] | None:
+    """Extrae (año, semana) del nombre estándar de los consolidados."""
+    coincidencia = re.search(
+        r"Semana_(\d{1,2})_(\d{4})_",
+        ruta.name,
+        flags=re.IGNORECASE,
+    )
+    if coincidencia is None:
+        return None
+
+    semana = int(coincidencia.group(1))
+    anio = int(coincidencia.group(2))
+    if not 1 <= semana <= 53:
+        return None
+    return anio, semana
+
+
+def firma_archivos_cobranza_parquet(ruta_carpeta: str) -> tuple:
+    """
+    Devuelve una firma de los archivos que invalida la caché cuando OneDrive
+    agrega o actualiza un consolidado. Si hay más de un archivo para la misma
+    semana/año, conserva el de modificación más reciente.
+    """
+    carpeta = Path(ruta_carpeta)
+    if not carpeta.is_dir():
+        raise FileNotFoundError(
+            "No encontré la carpeta de Cobranza en OneDrive:\n"
+            f"{carpeta}\n\n"
+            "Confirma que OneDrive esté sincronizado en este equipo."
+        )
+
+    archivos_por_periodo: dict[tuple[int, int], Path] = {}
+    for ruta in carpeta.glob("*.parquet"):
+        periodo = _periodo_desde_nombre_parquet(ruta)
+        if periodo is None:
+            continue
+
+        ruta_actual = archivos_por_periodo.get(periodo)
+        if ruta_actual is None or ruta.stat().st_mtime_ns > ruta_actual.stat().st_mtime_ns:
+            archivos_por_periodo[periodo] = ruta
+
+    if not archivos_por_periodo:
+        raise FileNotFoundError(
+            f"No encontré archivos .parquet semanales válidos en:\n{carpeta}"
+        )
+
+    firma = []
+    for (anio, semana), ruta in sorted(archivos_por_periodo.items()):
+        datos_archivo = ruta.stat()
+        firma.append(
+            (str(ruta), anio, semana, datos_archivo.st_size, datos_archivo.st_mtime_ns)
+        )
+    return tuple(firma)
+
+
+@st.cache_data(show_spinner=False, ttl=300)
+def cargar_cobranza_desde_parquet(ruta_carpeta: str, firma_archivos: tuple) -> pd.DataFrame:
+    """
+    Consolida los Parquet semanales de Cobranza en una sola tabla.
+
+    El año y la semana se toman del nombre del archivo para que el histórico
+    funcione incluso si esas columnas no existen dentro del Parquet.
+    """
+    partes = []
+    errores = []
+
+    for ruta_texto, anio, semana, _tamano, _fecha_modificacion in firma_archivos:
+        ruta = Path(ruta_texto)
+        try:
+            parte = pd.read_parquet(ruta)
+        except ImportError as exc:
+            raise RuntimeError(
+                "Falta el motor para leer archivos Parquet. Instala 'pyarrow' "
+                "en el mismo entorno donde ejecutas Streamlit:\n"
+                "pip install pyarrow"
+            ) from exc
+        except Exception as exc:
+            errores.append(f"{ruta.name}: {exc}")
+            continue
+
+        if parte is None or parte.empty:
+            continue
+
+        renombres = {}
+        for columna in parte.columns:
+            nombre = str(columna).strip()
+            clave = re.sub(
+                r"[^a-z0-9]+",
+                "_",
+                normalizar_texto_tc(nombre).lower(),
+            ).strip("_")
+
+            if clave == "pais":
+                renombres[columna] = "País"
+            elif clave == "unidad_de_negocio":
+                # En los consolidados de Cobranza este campo contiene marcas
+                # (La Casita, Presico MX, etc.), no la unidad superior del tablero.
+                renombres[columna] = "Marca"
+            elif clave == "ruta":
+                renombres[columna] = "Ruta"
+            elif clave.startswith("semana_del_a"):
+                renombres[columna] = "Semana del año"
+
+        parte = parte.rename(columns=renombres)
+
+        columnas_requeridas = list(dict.fromkeys(
+            COLUMNAS_PARQUET_CUOTA_TOTAL + COLUMNAS_PARQUET_RECUPERACION
+        ))
+        faltantes = [c for c in columnas_requeridas if c not in parte.columns]
+        if faltantes:
+            errores.append(
+                f"{ruta.name}: faltan columnas requeridas {faltantes}"
+            )
+            continue
+
+        for columna in columnas_requeridas:
+            parte[columna] = pd.to_numeric(parte[columna], errors="coerce").fillna(0)
+
+        # Cuota Total Cobranza = cuota del día + cuota de una semana + adelanto.
+        parte["Cuota Total Cobranza"] = parte[COLUMNAS_PARQUET_CUOTA_TOTAL].sum(axis=1)
+
+        # Recuperación semana = pago del día + pendiente sin atraso + adelanto
+        # + recuperado de una semana. Pago_Adelanto_No_Natural no interviene.
+        parte["Recuperación semana"] = parte[COLUMNAS_PARQUET_RECUPERACION].sum(axis=1)
+        parte["Año"] = int(anio)
+        parte["Semana del año"] = int(semana)
+
+        cuota = pd.to_numeric(parte["Cuota Total Cobranza"], errors="coerce").fillna(0)
+        pago = pd.to_numeric(parte["Recuperación semana"], errors="coerce").fillna(0)
+        parte["% de Cumplimiento"] = np.where(cuota == 0, np.nan, pago / cuota)
+        partes.append(parte)
+
+    if errores:
+        detalle = "\n".join(f"- {mensaje}" for mensaje in errores[:10])
+        adicionales = len(errores) - 10
+        if adicionales > 0:
+            detalle += f"\n- ... y {adicionales} archivo(s) más."
+        raise RuntimeError(
+            "No fue posible cargar completo el histórico Parquet de Cobranza:\n"
+            f"{detalle}"
+        )
+
+    if not partes:
+        raise ValueError(
+            "Los archivos Parquet de Cobranza no contienen registros utilizables."
+        )
+
+    cobranza = pd.concat(partes, ignore_index=True, sort=False)
+    cobranza = limpiar_datos(cobranza)
+    cobranza.attrs["ruta_origen"] = ruta_carpeta
+    cobranza.attrs["archivos_cargados"] = len(partes)
+    return cobranza
+
+
 @st.cache_data(show_spinner=False)
 def cargar_archivo(ruta_local: str | None, archivo_subido):
     df_cartera = None
@@ -2366,7 +2542,9 @@ def aplicar_formato_top_bottom(df_top_bottom: pd.DataFrame) -> pd.DataFrame:
     return df_fmt
 
 
-def obtener_ultima_semana_cobranza(df_cobranza_base: pd.DataFrame) -> int | None:
+def obtener_ultimo_periodo_cobranza(
+    df_cobranza_base: pd.DataFrame,
+) -> tuple[int | None, int] | None:
     if df_cobranza_base is None or df_cobranza_base.empty:
         return None
     if "Semana del año" not in df_cobranza_base.columns:
@@ -2381,11 +2559,15 @@ def obtener_ultima_semana_cobranza(df_cobranza_base: pd.DataFrame) -> int | None
 
     if "Año" in df_tmp.columns:
         df_tmp["Año"] = pd.to_numeric(df_tmp["Año"], errors="coerce")
+        df_tmp = df_tmp.dropna(subset=["Año"])
+        if df_tmp.empty:
+            return None
         df_tmp = df_tmp.sort_values(["Año", "Semana del año"])
+        ultima = df_tmp.iloc[-1]
+        return int(ultima["Año"]), int(ultima["Semana del año"])
     else:
         df_tmp = df_tmp.sort_values("Semana del año")
-
-    return int(df_tmp.iloc[-1]["Semana del año"])
+        return None, int(df_tmp.iloc[-1]["Semana del año"])
 
 
 def construir_top_bottom_cobranza(
@@ -2399,7 +2581,8 @@ def construir_top_bottom_cobranza(
     col_peor: str | None,
     tipo_ranking: str = "Top",
     cantidad: int = 10,
-    semana_objetivo: int | None = None
+    semana_objetivo: int | None = None,
+    anio_objetivo: int | None = None,
 ) -> pd.DataFrame:
     if df_cobranza_base is None or df_cobranza_base.empty:
         return pd.DataFrame()
@@ -2418,12 +2601,17 @@ def construir_top_bottom_cobranza(
         return pd.DataFrame()
 
     if semana_objetivo is None:
-        semana_objetivo = obtener_ultima_semana_cobranza(df_tmp)
+        periodo_objetivo = obtener_ultimo_periodo_cobranza(df_tmp)
+        if periodo_objetivo is not None:
+            anio_objetivo, semana_objetivo = periodo_objetivo
 
     if semana_objetivo is None:
         return pd.DataFrame()
 
     df_semana = df_tmp[df_tmp["Semana del año"] == int(semana_objetivo)].copy()
+    if anio_objetivo is not None and "Año" in df_semana.columns:
+        anios = pd.to_numeric(df_semana["Año"], errors="coerce")
+        df_semana = df_semana[anios == int(anio_objetivo)].copy()
 
     if df_semana.empty:
         return pd.DataFrame()
@@ -2930,30 +3118,6 @@ def preparar_cobranza(df_cobranza: pd.DataFrame):
 
     return df_tmp, col_cuota, col_pago, col_cump, col_mejor, col_peor
 
-
-def consolidar_cobranza(
-    df_cobranza: pd.DataFrame,
-    col_cuota: str,
-    col_pago: str,
-    col_cump: str,
-    col_mejor: str | None,
-    col_peor: str | None,
-    nivel: str | None = None
-):
-    df_tmp = df_cobranza.copy()
-
-    if "Semana del año" not in df_tmp.columns:
-        return pd.DataFrame()
-
-    grupo = []
-
-    if "Año" in df_tmp.columns:
-        grupo.append("Año")
-
-    grupo.append("Semana del año")
-
-    if nivel and nivel in df_tmp.columns:
-        grupo.append(nivel)
 
 def consolidar_cobranza(
     df_cobranza: pd.DataFrame,
@@ -3899,14 +4063,11 @@ def calcular_resumen_cobranza_para_modal(
     if df_cobranza_base is None or df_cobranza_base.empty:
         return pd.DataFrame(), None, None
 
-    try:
-        df_cob_filtrada = aplicar_filtros_cobranza_desde_cartera(
-            df_cobranza_base=df_cobranza_base,
-            df_cartera_base=df_cartera_base,
-            filtros=filtros_aplicados,
-        )
-    except Exception:
-        df_cob_filtrada = df_cobranza_base.copy()
+    df_cob_filtrada = aplicar_filtros_cobranza_desde_cartera(
+        df_cobranza_base=df_cobranza_base,
+        df_cartera_base=df_cartera_base,
+        filtros=filtros_aplicados,
+    )
 
     if df_cob_filtrada is None or df_cob_filtrada.empty:
         return pd.DataFrame(), None, None
@@ -3923,19 +4084,41 @@ def calcular_resumen_cobranza_para_modal(
     if df_cob.empty:
         return pd.DataFrame(), None, None
 
-    semanas_disponibles = sorted(df_cob["Semana del año"].astype(int).unique().tolist())
+    if "Año" in df_cob.columns:
+        df_cob["Año"] = pd.to_numeric(df_cob["Año"], errors="coerce")
+        df_cob = df_cob.dropna(subset=["Año"])
+        if df_cob.empty:
+            return pd.DataFrame(), None, None
 
-    if semana_referencia is not None:
-        semanas_hasta_ref = [s for s in semanas_disponibles if s <= int(semana_referencia)]
-        semana_actual_cob = semanas_hasta_ref[-1] if semanas_hasta_ref else semanas_disponibles[-1]
+        periodos_disponibles = sorted({
+            (int(anio), int(semana))
+            for anio, semana in zip(df_cob["Año"], df_cob["Semana del año"])
+        })
+        periodo_actual = periodos_disponibles[-1]
     else:
-        semana_actual_cob = semanas_disponibles[-1]
+        semanas_disponibles = sorted(
+            df_cob["Semana del año"].astype(int).unique().tolist()
+        )
+        if semana_referencia is not None:
+            semanas_hasta_ref = [
+                s for s in semanas_disponibles if s <= int(semana_referencia)
+            ]
+            semana_actual = semanas_hasta_ref[-1] if semanas_hasta_ref else semanas_disponibles[-1]
+        else:
+            semana_actual = semanas_disponibles[-1]
+        periodos_disponibles = [(None, semana) for semana in semanas_disponibles]
+        periodo_actual = (None, semana_actual)
 
-    semanas_previas = [s for s in semanas_disponibles if s < semana_actual_cob]
-    semana_anterior_cob = semanas_previas[-1] if semanas_previas else None
+    indice_actual = periodos_disponibles.index(periodo_actual)
+    periodo_anterior = periodos_disponibles[indice_actual - 1] if indice_actual > 0 else None
+    semana_actual_cob = periodo_actual[1]
+    semana_anterior_cob = periodo_anterior[1] if periodo_anterior is not None else None
 
-    def _agregar_semana(semana):
+    def _agregar_periodo(periodo):
+        anio, semana = periodo
         df_sem = df_cob[df_cob["Semana del año"].astype(int) == int(semana)].copy()
+        if anio is not None and "Año" in df_sem.columns:
+            df_sem = df_sem[df_sem["Año"].astype(int) == int(anio)].copy()
         cuota = pd.to_numeric(df_sem[col_cuota], errors="coerce").fillna(0).sum()
         pago = pd.to_numeric(df_sem[col_pago], errors="coerce").fillna(0).sum()
         cumplimiento = np.nan if cuota == 0 else pago / cuota
@@ -3950,8 +4133,8 @@ def calcular_resumen_cobranza_para_modal(
             datos[col_peor] = pd.to_numeric(df_sem[col_peor], errors="coerce").fillna(0).min()
         return datos
 
-    actual = _agregar_semana(semana_actual_cob)
-    anterior = _agregar_semana(semana_anterior_cob) if semana_anterior_cob is not None else {}
+    actual = _agregar_periodo(periodo_actual)
+    anterior = _agregar_periodo(periodo_anterior) if periodo_anterior is not None else {}
 
     indicadores_cobranza = [col_cuota, col_pago, "% de Cumplimiento"]
     if col_mejor and col_mejor in actual:
@@ -4500,7 +4683,14 @@ else:
     archivo_subido = None
 
 try:
-    df, df_cobranza = cargar_archivo(ruta_local, archivo_subido)
+    # Cartera conserva su origen actual. La hoja Cobranza de Base.xlsx se
+    # ignora deliberadamente porque el histórico oficial se toma de OneDrive.
+    df, _df_cobranza_excel = cargar_archivo(ruta_local, archivo_subido)
+    firma_cobranza = firma_archivos_cobranza_parquet(str(RUTA_COBRANZA_PARQUET))
+    df_cobranza = cargar_cobranza_desde_parquet(
+        str(RUTA_COBRANZA_PARQUET),
+        firma_cobranza,
+    )
 except Exception as e:
     st.error(str(e))
     st.stop()
@@ -6180,13 +6370,20 @@ else:
                                 col_mejor_final,
                                 col_peor_final,
                             ]
-                            if c and c in df_cobranza_top_bottom_base.columns or c == col_cump
+                            if (c and c in df_cobranza_top_bottom_base.columns) or c == col_cump
                         ]
 
                         # Quita duplicados conservando el orden.
                         variables_top_bottom_cobranza = list(dict.fromkeys(variables_top_bottom_cobranza))
 
-                        semana_top_bottom_cobranza = obtener_ultima_semana_cobranza(df_cobranza_top_bottom_base)
+                        periodo_top_bottom_cobranza = obtener_ultimo_periodo_cobranza(
+                            df_cobranza_top_bottom_base
+                        )
+                        if periodo_top_bottom_cobranza is None:
+                            anio_top_bottom_cobranza = None
+                            semana_top_bottom_cobranza = None
+                        else:
+                            anio_top_bottom_cobranza, semana_top_bottom_cobranza = periodo_top_bottom_cobranza
 
                         if not niveles_top_bottom_cobranza:
                             st.info("No hay niveles de estructura disponibles en la hoja Cobranza para construir el Top / Bottom.")
@@ -6228,15 +6425,21 @@ else:
                                 col_peor=col_peor_final,
                                 tipo_ranking=tipo_top_bottom_cobranza,
                                 cantidad=int(cantidad_top_bottom_cobranza),
-                                semana_objetivo=semana_top_bottom_cobranza
+                                semana_objetivo=semana_top_bottom_cobranza,
+                                anio_objetivo=anio_top_bottom_cobranza,
                             )
 
                             with col_tabla_top_bottom_cob:
                                 if tabla_top_bottom_cobranza.empty:
                                     st.info("No hay datos suficientes para mostrar el Top / Bottom de Cobranza con la selección actual.")
                                 else:
+                                    periodo_caption = (
+                                        f"{anio_top_bottom_cobranza} S{semana_top_bottom_cobranza}"
+                                        if anio_top_bottom_cobranza is not None
+                                        else f"Semana {semana_top_bottom_cobranza}"
+                                    )
                                     st.caption(
-                                        f"Semana {semana_top_bottom_cobranza} | {tipo_top_bottom_cobranza} "
+                                        f"{periodo_caption} | {tipo_top_bottom_cobranza} "
                                         f"por {nivel_top_bottom_cobranza} | Moneda: {etiqueta_moneda(modo_moneda)}"
                                     )
 
@@ -6249,7 +6452,9 @@ else:
                                     boton_descargar_xlsx(
                                         tabla_top_bottom_cobranza,
                                         "Descargar Top / Bottom Cobranza XLSX",
-                                        f"top_bottom_cobranza_{nivel_top_bottom_cobranza}_semana_{semana_top_bottom_cobranza}.xlsx",
+                                        f"top_bottom_cobranza_{nivel_top_bottom_cobranza}_"
+                                        f"{anio_top_bottom_cobranza or 'sin_anio'}_"
+                                        f"semana_{semana_top_bottom_cobranza}.xlsx",
                                         key="descargar_top_bottom_cobranza_xlsx"
                                     )
 
