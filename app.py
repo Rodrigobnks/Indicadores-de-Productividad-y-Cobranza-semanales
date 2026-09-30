@@ -34,7 +34,7 @@ except NameError:
 RUTA_DEFAULT = str(CARPETA_APP / "Base.xlsx")
 
 # Los Parquet semanales deben subirse al repositorio en data/cobranza.
-RUTA_COBRANZA_PARQUET = CARPETA_APP / "data" / "cobranza"
+RUTA_COBRANZA_PARQUET = CARPETA_APP / "Cobranza"
 
 # Fórmulas equivalentes a las medidas del modelo de Cobranza.
 COLUMNAS_PARQUET_CUOTA_TOTAL = [
