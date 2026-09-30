@@ -2231,15 +2231,16 @@ def aplicar_filtros_cobranza_desde_cartera(
     if df_ref.empty:
         return df_tmp.iloc[0:0].copy()
 
-    columnas_puente = [
-        "Unidad de Negocio",
-        "Marca",
-        "País",
-        "Subdireccion",
-        "Zona",
-        "Sucursal",
-        "Ruta",
-    ]
+    # País siempre funciona como puente entre la Unidad de Negocio elegida en
+    # Cartera y los Parquet. Las demás dimensiones solo deben restringir
+    # Cobranza cuando el usuario las seleccionó explícitamente. Así, Marca =
+    # "Todos" conserva también marcas que existen únicamente en Cobranza,
+    # como Presico MX y Presico CD.
+    columnas_puente = ["País"]
+    columnas_puente.extend([
+        col for col in ["Marca", "Subdireccion", "Zona", "Sucursal", "Ruta"]
+        if col in filtros and filtros.get(col)
+    ])
 
     for col in columnas_puente:
         if col in df_tmp.columns and col in df_ref.columns:
