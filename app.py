@@ -50,6 +50,10 @@ COLUMNAS_PARQUET_RECUPERACION = [
     "Recuperado_cobranza_1_sem",
 ]
 
+# Las gráficas de Cobranza muestran únicamente los periodos más recientes.
+# Las tablas y archivos descargables conservan todo el histórico disponible.
+MAX_SEMANAS_VISUALES_COBRANZA = 20
+
 # Nombre de la imagen de fondo. Debe estar en la misma carpeta que este script.
 NOMBRE_IMAGEN_FONDO = "ChatGPT Image 19 may 2026, 11_58_09 a.m."
 
@@ -3298,10 +3302,35 @@ def estilo_ultimas_5_cobranza(tabla):
     return tabla.style.apply(pintar, axis=None)
 
 
+def limitar_ultimas_semanas_cobranza(
+    evol: pd.DataFrame,
+    limite: int = MAX_SEMANAS_VISUALES_COBRANZA,
+) -> pd.DataFrame:
+    """Ordena por año/semana y conserva los últimos periodos para los visuales."""
+    if evol is None or evol.empty or "Semana del año" not in evol.columns:
+        return pd.DataFrame() if evol is None else evol.copy()
+
+    df_tmp = evol.copy()
+    df_tmp["Semana del año"] = pd.to_numeric(
+        df_tmp["Semana del año"], errors="coerce"
+    )
+    columnas_orden = ["Semana del año"]
+
+    if "Año" in df_tmp.columns:
+        df_tmp["Año"] = pd.to_numeric(df_tmp["Año"], errors="coerce")
+        columnas_orden = ["Año", "Semana del año"]
+
+    df_tmp = df_tmp.dropna(subset=columnas_orden)
+    return (
+        df_tmp
+        .sort_values(columnas_orden)
+        .tail(max(1, int(limite)))
+        .reset_index(drop=True)
+    )
+
+
 def grafica_cumplimiento(evol, col_cump, modo_moneda=None):
-    df_tmp = evol.copy().sort_values(
-        ["Año", "Semana del año"] if "Año" in evol.columns else ["Semana del año"]
-    ).reset_index(drop=True)
+    df_tmp = limitar_ultimas_semanas_cobranza(evol)
 
     if df_tmp.empty:
         return go.Figure()
@@ -3489,9 +3518,7 @@ def _html_recuadro_pronostico(ultima, pronostico_cuota, pronostico_pago, col_cuo
 
 
 def grafica_cuota_pago(evol, col_cuota, col_pago, col_mejor, col_peor, modo_moneda="Moneda local"):
-    df_tmp = evol.copy().sort_values(
-        ["Año", "Semana del año"] if "Año" in evol.columns else ["Semana del año"]
-    ).reset_index(drop=True)
+    df_tmp = limitar_ultimas_semanas_cobranza(evol)
 
     if df_tmp.empty:
         return go.Figure()
@@ -6215,6 +6242,10 @@ else:
                 else:
                     col_mejor_final = col_mejor if col_mejor and col_mejor in evol_cobranza.columns else "Mejor semana"
                     col_peor_final = col_peor if col_peor and col_peor in evol_cobranza.columns else "Peor semana"
+                    evol_cobranza_visual = limitar_ultimas_semanas_cobranza(
+                        evol_cobranza,
+                        MAX_SEMANAS_VISUALES_COBRANZA,
+                    )
 
                     # ------------------------------
                     # Tabla base de Cobranza
@@ -6267,12 +6298,16 @@ else:
                     # Gráfica cumplimiento
                     # ------------------------------
                     st.markdown("**% Cumplimiento semanal**")
+                    st.caption(
+                        f"Visuales ordenados cronológicamente: últimas "
+                        f"{len(evol_cobranza_visual)} semanas disponibles."
+                    )
                     mostrar_boton_comentario(
                         "cobranza_cumplimiento",
-                        comentario_cobranza_cumplimiento(evol_cobranza, col_cump)
+                        comentario_cobranza_cumplimiento(evol_cobranza_visual, col_cump)
                     )
 
-                    fig_cump = grafica_cumplimiento(evol_cobranza, col_cump, modo_moneda)
+                    fig_cump = grafica_cumplimiento(evol_cobranza_visual, col_cump, modo_moneda)
                     fig_cump.update_layout(dragmode=False)
                     fig_cump.update_xaxes(fixedrange=True)
                     fig_cump.update_yaxes(fixedrange=True)
@@ -6291,11 +6326,11 @@ else:
                     st.markdown("**Cuota total vs Pago total**")
                     mostrar_boton_comentario(
                         "cobranza_cuota_pago",
-                        comentario_cobranza_cuota_pago(evol_cobranza, col_cuota, col_pago, col_cump)
+                        comentario_cobranza_cuota_pago(evol_cobranza_visual, col_cuota, col_pago, col_cump)
                     )
 
                     fig_cp = grafica_cuota_pago(
-                        evol=evol_cobranza,
+                        evol=evol_cobranza_visual,
                         col_cuota=col_cuota,
                         col_pago=col_pago,
                         col_mejor=col_mejor_final,
