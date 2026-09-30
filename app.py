@@ -23,15 +23,18 @@ st.set_page_config(
     layout="wide"
 )
 
-# Usa Excel, no CSV, porque ahora la base trae 2 hojas: Cartera y Cobranza.
-RUTA_DEFAULT = "Base.xlsx"
+# Todas las rutas se resuelven desde la carpeta donde vive este script. Esto
+# funciona igual al ejecutarlo localmente o al desplegarlo en Streamlit Cloud.
+try:
+    CARPETA_APP = Path(__file__).resolve().parent
+except NameError:
+    CARPETA_APP = Path.cwd()
 
-# Cobranza se toma de los históricos semanales en Parquet sincronizados por
-# OneDrive. Cartera continúa leyéndose desde RUTA_DEFAULT.
-RUTA_COBRANZA_PARQUET = Path(
-    r"C:\Users\EQUIPO\OneDrive\TARS\COBRANZA\Consolidado_BI"
-    r"\Moneda Local Parquet\Semanal"
-)
+# Cartera continúa leyéndose desde Base.xlsx.
+RUTA_DEFAULT = str(CARPETA_APP / "Base.xlsx")
+
+# Los Parquet semanales deben subirse al repositorio en data/cobranza.
+RUTA_COBRANZA_PARQUET = CARPETA_APP / "data" / "cobranza"
 
 # Fórmulas equivalentes a las medidas del modelo de Cobranza.
 COLUMNAS_PARQUET_CUOTA_TOTAL = [
@@ -215,10 +218,7 @@ TERMINOS_MONETARIOS = [
 # FONDO Y ESTILO
 # ============================================================
 def ruta_carpeta_script() -> Path:
-    try:
-        return Path(__file__).resolve().parent
-    except Exception:
-        return Path.cwd()
+    return CARPETA_APP
 
 
 def buscar_imagen_fondo(nombre_imagen: str) -> Path | None:
@@ -1451,16 +1451,16 @@ def _periodo_desde_nombre_parquet(ruta: Path) -> tuple[int, int] | None:
 
 def firma_archivos_cobranza_parquet(ruta_carpeta: str) -> tuple:
     """
-    Devuelve una firma de los archivos que invalida la caché cuando OneDrive
-    agrega o actualiza un consolidado. Si hay más de un archivo para la misma
+    Devuelve una firma de los archivos que invalida la caché cuando se agrega
+    o actualiza un consolidado. Si hay más de un archivo para la misma
     semana/año, conserva el de modificación más reciente.
     """
     carpeta = Path(ruta_carpeta)
     if not carpeta.is_dir():
         raise FileNotFoundError(
-            "No encontré la carpeta de Cobranza en OneDrive:\n"
+            "No encontré la carpeta de Parquet de Cobranza:\n"
             f"{carpeta}\n\n"
-            "Confirma que OneDrive esté sincronizado en este equipo."
+            "Crea data/cobranza junto al script y sube allí los archivos .parquet."
         )
 
     archivos_por_periodo: dict[tuple[int, int], Path] = {}
@@ -4684,7 +4684,7 @@ else:
 
 try:
     # Cartera conserva su origen actual. La hoja Cobranza de Base.xlsx se
-    # ignora deliberadamente porque el histórico oficial se toma de OneDrive.
+    # ignora porque el histórico se toma de data/cobranza en el repositorio.
     df, _df_cobranza_excel = cargar_archivo(ruta_local, archivo_subido)
     firma_cobranza = firma_archivos_cobranza_parquet(str(RUTA_COBRANZA_PARQUET))
     df_cobranza = cargar_cobranza_desde_parquet(
