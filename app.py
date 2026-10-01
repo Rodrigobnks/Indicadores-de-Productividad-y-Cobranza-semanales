@@ -3274,6 +3274,57 @@ def estilo_matriz_desplazamiento(df_matriz: pd.DataFrame):
     return df_matriz.style.apply(colorear, axis=None).format("{:,.0f}")
 
 
+def matriz_desplazamiento_html(df_matriz: pd.DataFrame) -> str:
+    """Renderiza la matriz completa como tabla responsiva, sin scroll interno."""
+    ranking = {
+        "Secundaria": 0,
+        "Improductiva": 1,
+        "En Desarrollo": 2,
+        "Productiva": 3,
+    }
+
+    encabezados = [
+        '<th class="matriz-col-origen">Semana anterior</th>',
+        *[f"<th>{html.escape(str(col))}</th>" for col in df_matriz.columns],
+    ]
+    filas_html = []
+
+    for fila in df_matriz.index:
+        celdas = [f'<th scope="row">{html.escape(str(fila))}</th>']
+        for columna in df_matriz.columns:
+            clases = []
+            if fila == "Total general" or columna == "Total general":
+                clases.append("matriz-total")
+            elif fila == "Nueva":
+                clases.append("matriz-nueva")
+            elif columna == "Baja":
+                clases.append("matriz-baja")
+            elif fila in ranking and columna in ranking:
+                if ranking[columna] > ranking[fila]:
+                    clases.append("matriz-mejora")
+                elif ranking[columna] < ranking[fila]:
+                    clases.append("matriz-retroceso")
+                else:
+                    clases.append("matriz-permanencia")
+
+            valor = df_matriz.loc[fila, columna]
+            valor_txt = "—" if pd.isna(valor) else f"{float(valor):,.0f}"
+            celdas.append(
+                f'<td class="{" ".join(clases)}">{html.escape(valor_txt)}</td>'
+            )
+
+        clase_fila = " class=\"matriz-fila-total\"" if fila == "Total general" else ""
+        filas_html.append(f"<tr{clase_fila}>{''.join(celdas)}</tr>")
+
+    return (
+        '<div class="matriz-responsiva-sin-scroll">'
+        '<table aria-label="Matriz de desplazamiento de coordinadoras">'
+        f"<thead><tr>{''.join(encabezados)}</tr></thead>"
+        f"<tbody>{''.join(filas_html)}</tbody>"
+        "</table></div>"
+    )
+
+
 def calcular_resumen_movimientos(movimientos: pd.DataFrame) -> dict:
     if movimientos is None or movimientos.empty:
         return {
@@ -3397,10 +3448,15 @@ def mostrar_cuadro_resumen_movimientos(movimientos: pd.DataFrame):
             unsafe_allow_html=True
         )
     else:
-        st.dataframe(
-            tabla_imp,
-            use_container_width=True,
-            hide_index=True
+        st.markdown(
+            '<div class="tabla-marca-responsiva">'
+            + tabla_imp.to_html(
+                index=False,
+                border=0,
+                classes="tabla-marca-compacta",
+            )
+            + '</div>',
+            unsafe_allow_html=True,
         )
         boton_descargar_xlsx(
             tabla_imp,
@@ -7730,12 +7786,12 @@ if modulo_seleccionado == "Cartera":
                 with col_m4:
                     st.metric("Bajas", f"{total_bajas:,.0f}")
 
-                col_matriz_mov, col_resumen_mov = st.columns([2.2, 1])
+                col_matriz_mov, col_resumen_mov = st.columns([2.65, 1], gap="small")
 
                 with col_matriz_mov:
-                    st.dataframe(
-                        estilo_matriz_desplazamiento(matriz_movimientos),
-                        use_container_width=True
+                    st.markdown(
+                        matriz_desplazamiento_html(matriz_movimientos),
+                        unsafe_allow_html=True,
                     )
                     boton_descargar_xlsx(
                         matriz_movimientos.reset_index() if hasattr(matriz_movimientos, "reset_index") else matriz_movimientos,
@@ -9979,6 +10035,243 @@ st.markdown(
 
     .gestion-miniatura-real {
         height:116px !important;
+    }
+
+    /* Los textos de estos dos botones prevalecen sobre el tema global azul. */
+    .stApp div[class*="st-key-btn_abrir_resumen_pais"] button,
+    .stApp div[class*="st-key-btn_abrir_resumen_pais"] button p,
+    .stApp div[class*="st-key-btn_abrir_resumen_pais"] button span,
+    .stApp div[class*="st-key-btn_abrir_resumen_pais"] button div,
+    .stApp div[class*="st-key-btn_cambiar_unidad"] button,
+    .stApp div[class*="st-key-btn_cambiar_unidad"] button p,
+    .stApp div[class*="st-key-btn_cambiar_unidad"] button span,
+    .stApp div[class*="st-key-btn_cambiar_unidad"] button div {
+        color:#082567 !important;
+        -webkit-text-fill-color:#082567 !important;
+        opacity:1 !important;
+        visibility:visible !important;
+        text-shadow:none !important;
+    }
+
+    .stApp .st-key-ayuda_tablero [data-testid="stHorizontalBlock"] > div:nth-child(2) button,
+    .stApp .st-key-ayuda_tablero [data-testid="stHorizontalBlock"] > div:nth-child(2) button *,
+    .stApp .st-key-ayuda_tablero [data-testid="stHorizontalBlock"] > div:nth-child(3) button,
+    .stApp .st-key-ayuda_tablero [data-testid="stHorizontalBlock"] > div:nth-child(3) button * {
+        color:#082567 !important;
+        -webkit-text-fill-color:#082567 !important;
+        opacity:1 !important;
+        visibility:visible !important;
+        text-shadow:none !important;
+    }
+
+    /* Matriz estática y fluida: todas las columnas caben, sin scroll horizontal. */
+    .matriz-responsiva-sin-scroll {
+        width:100% !important;
+        max-width:100% !important;
+        overflow:visible !important;
+        border:1px solid #dbe3ee;
+        border-radius:10px;
+        background:#ffffff;
+        box-sizing:border-box;
+    }
+
+    .matriz-responsiva-sin-scroll table {
+        width:100% !important;
+        max-width:100% !important;
+        table-layout:fixed !important;
+        border-collapse:separate;
+        border-spacing:0;
+        color:#111827;
+        font-size:clamp(9px,.68vw,12px);
+        line-height:1.05;
+    }
+
+    .matriz-responsiva-sin-scroll th,
+    .matriz-responsiva-sin-scroll td {
+        height:32px;
+        padding:5px 4px;
+        border-right:1px solid #dbe3ee;
+        border-bottom:1px solid #dbe3ee;
+        text-align:right;
+        vertical-align:middle;
+        white-space:normal;
+        overflow-wrap:anywhere;
+        box-sizing:border-box;
+    }
+
+    .matriz-responsiva-sin-scroll thead th {
+        height:34px;
+        background:#f8fafc;
+        color:#64748b;
+        font-weight:750;
+        text-align:left;
+    }
+
+    .matriz-responsiva-sin-scroll th:first-child {
+        width:15%;
+        text-align:left;
+        padding-left:8px;
+    }
+
+    .matriz-responsiva-sin-scroll tr:last-child > * { border-bottom:0; }
+    .matriz-responsiva-sin-scroll tr > *:last-child { border-right:0; }
+    .matriz-responsiva-sin-scroll .matriz-fila-total > th {
+        background:#082567;
+        color:#ffffff !important;
+        -webkit-text-fill-color:#ffffff !important;
+        font-weight:900;
+    }
+    .matriz-responsiva-sin-scroll .matriz-total {
+        background:#082567;
+        color:#ffffff !important;
+        -webkit-text-fill-color:#ffffff !important;
+        font-weight:900;
+    }
+    .matriz-responsiva-sin-scroll .matriz-nueva {
+        background:#dbeafe;
+        color:#1d4ed8 !important;
+        -webkit-text-fill-color:#1d4ed8 !important;
+        font-weight:850;
+    }
+    .matriz-responsiva-sin-scroll .matriz-baja {
+        background:#ffedd5;
+        color:#c2410c !important;
+        -webkit-text-fill-color:#c2410c !important;
+        font-weight:850;
+    }
+    .matriz-responsiva-sin-scroll .matriz-mejora {
+        color:#059669 !important;
+        -webkit-text-fill-color:#059669 !important;
+        font-weight:850;
+    }
+    .matriz-responsiva-sin-scroll .matriz-retroceso {
+        color:#dc2626 !important;
+        -webkit-text-fill-color:#dc2626 !important;
+        font-weight:850;
+    }
+    .matriz-responsiva-sin-scroll .matriz-permanencia {
+        background:#f1f5f9;
+        color:#111827 !important;
+        -webkit-text-fill-color:#111827 !important;
+        font-weight:800;
+    }
+
+    /* La tabla lateral también crece con sus filas y no crea un viewport propio. */
+    .tabla-marca-responsiva {
+        width:100%;
+        overflow:visible;
+        border:1px solid #dbe3ee;
+        border-top:0;
+        border-radius:0 0 9px 9px;
+        background:#ffffff;
+    }
+    .tabla-marca-compacta {
+        width:100%;
+        table-layout:fixed;
+        border-collapse:collapse;
+        font-size:11px;
+        color:#334155;
+    }
+    .tabla-marca-compacta th,
+    .tabla-marca-compacta td {
+        padding:5px 7px;
+        border-bottom:1px solid #e2e8f0;
+        text-align:left;
+        overflow-wrap:anywhere;
+    }
+    .tabla-marca-compacta th {
+        background:#f8fafc;
+        color:#64748b;
+        font-weight:750;
+    }
+    .tabla-marca-compacta th:last-child,
+    .tabla-marca-compacta td:last-child {
+        width:62%;
+        text-align:right;
+    }
+    .tabla-marca-compacta tr:last-child td { border-bottom:0; }
+
+    /* Ajustes de densidad exclusivos para la diapositiva de movimientos. */
+    .st-key-gestion_slide_movimientos {
+        overflow:visible !important;
+        padding:8px 14px 10px !important;
+    }
+    .st-key-gestion_slide_movimientos > [data-testid="stVerticalBlock"],
+    .st-key-gestion_slide_movimientos [data-testid="stVerticalBlock"] {
+        gap:.28rem !important;
+    }
+    .st-key-gestion_slide_movimientos h2,
+    .st-key-gestion_slide_movimientos h3 {
+        font-size:clamp(19px,1.45vw,26px) !important;
+        line-height:1.05 !important;
+        margin:0 !important;
+        padding:0 !important;
+    }
+    .st-key-gestion_slide_movimientos [data-testid="stWidgetLabel"] p,
+    .st-key-gestion_slide_movimientos [data-testid="stCaptionContainer"] p {
+        font-size:11px !important;
+        line-height:1.15 !important;
+        margin:0 !important;
+    }
+    .st-key-gestion_slide_movimientos div[data-baseweb="select"] > div {
+        min-height:34px !important;
+        height:34px !important;
+    }
+    .st-key-gestion_slide_movimientos [data-testid="stMetric"] {
+        min-height:68px !important;
+        padding:7px 12px !important;
+        border-radius:10px !important;
+    }
+    .st-key-gestion_slide_movimientos [data-testid="stMetricLabel"] p {
+        font-size:11px !important;
+        line-height:1.05 !important;
+    }
+    .st-key-gestion_slide_movimientos [data-testid="stMetricValue"] {
+        font-size:clamp(22px,1.7vw,30px) !important;
+        line-height:1 !important;
+    }
+    .st-key-gestion_slide_movimientos .cuadro-movimientos {
+        margin-bottom:5px !important;
+        border-radius:9px !important;
+    }
+    .st-key-gestion_slide_movimientos .cuadro-header {
+        padding:5px 8px !important;
+        font-size:12px !important;
+    }
+    .st-key-gestion_slide_movimientos .cuadro-body {
+        padding:7px 8px 5px !important;
+        font-size:13px !important;
+        line-height:1.13 !important;
+    }
+    .st-key-gestion_slide_movimientos .fila-mov {
+        margin-bottom:2px !important;
+        gap:6px !important;
+    }
+    .st-key-gestion_slide_movimientos .cuadro-marca-title {
+        margin-top:4px !important;
+        padding:6px 8px !important;
+        border-radius:9px 9px 0 0 !important;
+        font-size:11px !important;
+        line-height:1.15 !important;
+    }
+    .st-key-gestion_slide_movimientos div[data-testid="stDownloadButton"] > button {
+        min-height:32px !important;
+        height:32px !important;
+        padding:0 11px !important;
+        border-radius:8px !important;
+        font-size:10px !important;
+        box-shadow:0 3px 8px rgba(8,37,103,.14) !important;
+    }
+    .st-key-gestion_slide_movimientos div[data-testid="stDownloadButton"] > button * {
+        font-size:10px !important;
+        line-height:1 !important;
+    }
+
+    @media (max-width:1300px) and (min-width:901px) {
+        .matriz-responsiva-sin-scroll table { font-size:8.5px; }
+        .matriz-responsiva-sin-scroll th,
+        .matriz-responsiva-sin-scroll td { padding:4px 2px; }
+        .st-key-ayuda_tablero { width:390px !important; }
     }
 
     @media (max-width:1100px) {
