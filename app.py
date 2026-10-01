@@ -5832,7 +5832,39 @@ if modulo_seleccionado == "Cartera":
         if metricas_evolucion:
             col_grafica, col_menu = st.columns([4, 1])
 
+            semanas_evolucion = sorted(
+                int(semana)
+                for semana in df_filtrado["Semana del año"].dropna().unique()
+            )
+            rango_semanas_default = (
+                semanas_evolucion[0],
+                semanas_evolucion[-1],
+            )
+
+            rango_guardado = st.session_state.get("rango_semanas_evolucion")
+            rango_guardado_valido = (
+                isinstance(rango_guardado, (list, tuple))
+                and len(rango_guardado) == 2
+                and rango_guardado[0] in semanas_evolucion
+                and rango_guardado[1] in semanas_evolucion
+            )
+            if not rango_guardado_valido:
+                st.session_state.pop("rango_semanas_evolucion", None)
+
             with col_menu:
+                if len(semanas_evolucion) > 1:
+                    semana_inicio_evolucion, semana_fin_evolucion = st.select_slider(
+                        "Rango de semanas",
+                        options=semanas_evolucion,
+                        value=rango_semanas_default,
+                        format_func=lambda semana: f"S{int(semana)}",
+                        key="rango_semanas_evolucion",
+                    )
+                else:
+                    semana_inicio_evolucion = semanas_evolucion[0]
+                    semana_fin_evolucion = semanas_evolucion[0]
+                    st.caption(f"Semana: S{semana_inicio_evolucion}")
+
                 indicador_grafica = st.selectbox(
                     "Indicador",
                     options=metricas_evolucion,
@@ -5842,9 +5874,16 @@ if modulo_seleccionado == "Cartera":
                     key="indicador_evolucion"
                 )
 
-            if indicador_grafica == "IP" and {"Clientes al corriente", "Clientes Totales"}.issubset(df_filtrado.columns):
+            df_evolucion = df_filtrado[
+                df_filtrado["Semana del año"].between(
+                    semana_inicio_evolucion,
+                    semana_fin_evolucion,
+                )
+            ].copy()
+
+            if indicador_grafica == "IP" and {"Clientes al corriente", "Clientes Totales"}.issubset(df_evolucion.columns):
                 evol_base_ip = (
-                    df_filtrado
+                    df_evolucion
                     .groupby("Semana del año", dropna=False)[["Clientes al corriente", "Clientes Totales"]]
                     .sum(numeric_only=True)
                     .reset_index()
@@ -5858,7 +5897,7 @@ if modulo_seleccionado == "Cartera":
                 evol = evol_base_ip[["Semana del año", "IP"]].copy()
             else:
                 evol = (
-                    df_filtrado
+                    df_evolucion
                     .groupby("Semana del año", dropna=False)[indicador_grafica]
                     .sum()
                     .reset_index()
