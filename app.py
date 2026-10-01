@@ -83,26 +83,6 @@ MAX_SEMANAS_VISUALES_COBRANZA = 20
 # Nombre de la imagen de fondo. Debe estar en la misma carpeta que este script.
 NOMBRE_IMAGEN_FONDO = "ChatGPT Image 19 may 2026, 11_58_09 a.m."
 
-# Fondo corporativo recreado con CSS. Conserva los arcos de las esquinas,
-# pero elimina la marca de agua central "Caprepa / Servicios Financieros".
-FONDO_CSS_SIN_MARCA = """
-background-image:
-    radial-gradient(ellipse 78% 62% at 112% -14%,
-        transparent 0 57%,
-        rgba(242,207,41,.13) 57.5% 61.5%,
-        transparent 62% 66%,
-        rgba(8,37,103,.09) 66.5% 70%,
-        transparent 70.5%),
-    radial-gradient(ellipse 66% 58% at -12% 112%,
-        transparent 0 58%,
-        rgba(242,207,41,.12) 58.5% 62.5%,
-        transparent 63% 67%,
-        rgba(8,37,103,.08) 67.5% 71%,
-        transparent 71.5%),
-    linear-gradient(#ffffff,#ffffff) !important;
-background-color:#ffffff !important;
-"""
-
 # Oculta la tarjeta superior de carga de archivo y el expander de control de datos.
 # El tablero seguirá usando RUTA_DEFAULT como origen de Cartera.
 MOSTRAR_SECCION_ARCHIVO = False
@@ -318,11 +298,24 @@ def imagen_logo_html(nombre_archivo: str, clase_css: str = "unidad-logo") -> str
 
 
 def aplicar_fondo_pagina(nombre_imagen: str):
+    ruta_imagen = buscar_imagen_fondo(nombre_imagen)
+
+    if ruta_imagen is None:
+        st.warning(
+            "No encontré la imagen de fondo en la misma carpeta del script. "
+            f"Revisa que exista el archivo: {nombre_imagen}.png, .jpg, .jpeg o .webp"
+        )
+        return
+
+    fondo_base64 = imagen_a_base64(str(ruta_imagen))
+
     st.markdown(
         f"""
         <style>
         .stApp {{
-            {FONDO_CSS_SIN_MARCA}
+            background-image:
+                linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.90)),
+                url("data:image/png;base64,{fondo_base64}");
             background-size: cover;
             background-position: top center;
             background-repeat: no-repeat;
@@ -5613,7 +5606,15 @@ if unidades_negocio:
 
         # Estilo autocontenido de la portada. Se inyecta antes de detener la
         # ejecución porque el tablero se abre únicamente al pulsar un mapa.
-        landing_background = FONDO_CSS_SIN_MARCA
+        ruta_landing_marca_agua = buscar_imagen_fondo(NOMBRE_IMAGEN_FONDO)
+        landing_background = ""
+        if ruta_landing_marca_agua is not None:
+            landing_fondo_base64 = imagen_a_base64(str(ruta_landing_marca_agua))
+            landing_background = f'''
+                background-image:
+                    linear-gradient(rgba(248,250,252,0.94), rgba(248,250,252,0.98)),
+                    url("data:image/png;base64,{landing_fondo_base64}") !important;
+            '''
 
         st.markdown(
             f"""
@@ -6103,7 +6104,15 @@ if unidades_negocio:
 
         # Modo claro forzado para que la portada conserve la identidad visual
         # aun cuando el navegador o Streamlit estén configurados en tema oscuro.
-        landing_background = FONDO_CSS_SIN_MARCA
+        ruta_landing_marca_agua = buscar_imagen_fondo(NOMBRE_IMAGEN_FONDO)
+        landing_background = ""
+        if ruta_landing_marca_agua is not None:
+            landing_fondo_base64 = imagen_a_base64(str(ruta_landing_marca_agua))
+            landing_background = f'''
+                background-image:
+                    linear-gradient(rgba(248,250,252,0.94), rgba(248,250,252,0.98)),
+                    url("data:image/png;base64,{landing_fondo_base64}") !important;
+            '''
 
         st.markdown(
             f"""
@@ -6424,15 +6433,6 @@ if unidad_negocio_seleccionada is not None:
             padding:10px clamp(12px,1.5vw,24px) 8px !important;
             margin:0 !important;
             box-sizing:border-box !important;
-        }}
-
-        .stApp,
-        [data-testid="stAppViewContainer"] {{
-            {FONDO_CSS_SIN_MARCA}
-            background-size:cover !important;
-            background-position:top center !important;
-            background-repeat:no-repeat !important;
-            background-attachment:fixed !important;
         }}
 
         /* El bloque raíz de Gestión usa un solo ritmo vertical compacto. */
@@ -9626,7 +9626,9 @@ if ruta_imagen_marca_agua is not None:
 
         .stApp,
         [data-testid="stAppViewContainer"] {{
-            {FONDO_CSS_SIN_MARCA}
+            background-image:
+                linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.91)),
+                url("data:image/png;base64,{fondo_marca_agua_base64}") !important;
             background-size: cover !important;
             background-position: top center !important;
             background-repeat: no-repeat !important;
@@ -9645,7 +9647,9 @@ if ruta_imagen_marca_agua is not None:
 
             .stApp,
             [data-testid="stAppViewContainer"] {{
-                {FONDO_CSS_SIN_MARCA}
+                background-image:
+                    linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.91)),
+                    url("data:image/png;base64,{fondo_marca_agua_base64}") !important;
                 background-size: cover !important;
                 background-position: top center !important;
                 background-repeat: no-repeat !important;
