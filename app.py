@@ -1619,7 +1619,7 @@ COLUMNAS_ORIGEN_CARTERA_CONCENTRADOS = {
 
 
 def firma_archivos_cartera_concentrados(ruta_carpeta: str) -> tuple:
-    """Firma los Excel de Cartera para invalidar la caché al cambiarlos."""
+    """Firma los Parquet/Excel de Cartera para invalidar la caché al cambiarlos."""
     carpeta = Path(ruta_carpeta)
     if not carpeta.is_dir():
         raise FileNotFoundError(
@@ -1627,16 +1627,26 @@ def firma_archivos_cartera_concentrados(ruta_carpeta: str) -> tuple:
             f"{carpeta}"
         )
 
-    archivos = sorted(
+    archivos_parquet = sorted(
+        ruta
+        for ruta in carpeta.iterdir()
+        if ruta.is_file()
+        and not ruta.name.startswith("~$")
+        and ruta.suffix.lower() == ".parquet"
+    )
+    archivos_excel = sorted(
         ruta
         for ruta in carpeta.iterdir()
         if ruta.is_file()
         and not ruta.name.startswith("~$")
         and ruta.suffix.lower() in {".xlsx", ".xlsm", ".xlsb", ".xls"}
     )
+    # Si existe un Parquet consolidado, se usa exclusivamente ese formato para
+    # evitar volver a leer los Excel grandes o duplicar los mismos registros.
+    archivos = archivos_parquet if archivos_parquet else archivos_excel
     if not archivos:
         raise FileNotFoundError(
-            f"No encontré archivos Excel de Cartera en:\n{carpeta}"
+            f"No encontré archivos Parquet o Excel de Cartera en:\n{carpeta}"
         )
 
     return tuple(
@@ -1761,18 +1771,25 @@ def cargar_cartera_desde_concentrados(
     for ruta_texto, _tamano, _fecha_modificacion in firma_archivos:
         ruta = Path(ruta_texto)
         try:
-            with pd.ExcelFile(ruta) as excel:
-                hoja, columnas = _detectar_hoja_cartera_concentrado(excel)
-                columnas_utiles = [
-                    columna
-                    for columna in columnas
-                    if columna in COLUMNAS_ORIGEN_CARTERA_CONCENTRADOS
-                ]
-                parte = pd.read_excel(
-                    excel,
-                    sheet_name=hoja,
-                    usecols=columnas_utiles,
-                )
+            if ruta.suffix.lower() == ".parquet":
+                parte = pd.read_parquet(ruta)
+                hoja = "Parquet consolidado"
+                if "Semana del año" not in parte.columns:
+                    parte = _preparar_cartera_concentrado(parte, ruta.name)
+            else:
+                with pd.ExcelFile(ruta) as excel:
+                    hoja, columnas = _detectar_hoja_cartera_concentrado(excel)
+                    columnas_utiles = [
+                        columna
+                        for columna in columnas
+                        if columna in COLUMNAS_ORIGEN_CARTERA_CONCENTRADOS
+                    ]
+                    parte = pd.read_excel(
+                        excel,
+                        sheet_name=hoja,
+                        usecols=columnas_utiles,
+                    )
+                parte = _preparar_cartera_concentrado(parte, ruta.name)
         except Exception as exc:
             errores.append(f"{ruta.name}: {exc}")
             continue
@@ -1781,7 +1798,6 @@ def cargar_cartera_desde_concentrados(
             errores.append(f"{ruta.name}: la hoja {hoja} no contiene registros")
             continue
 
-        parte = _preparar_cartera_concentrado(parte, ruta.name)
         partes.append(parte)
         hojas_cargadas.append(f"{ruta.name} [{hoja}]")
 
