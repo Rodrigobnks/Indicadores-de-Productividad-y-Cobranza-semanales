@@ -2037,7 +2037,8 @@ def dataframe_a_xlsx_bytes(df_exportar: pd.DataFrame, nombre_hoja: str = "Datos"
         df_tmp.to_excel(writer, index=False, sheet_name=str(nombre_hoja)[:31] or "Datos")
         ws = writer.sheets[str(nombre_hoja)[:31] or "Datos"]
         for idx, col in enumerate(df_tmp.columns, start=1):
-            max_len = max([len(str(col))] + [len(str(v)) for v in df_tmp[col].head(200).fillna("").tolist()])
+            muestra = df_tmp[col].head(200).astype("string").fillna("")
+            max_len = max([len(str(col))] + [len(str(v)) for v in muestra.tolist()])
             ws.column_dimensions[ws.cell(row=1, column=idx).column_letter].width = min(max(max_len + 2, 12), 45)
     return salida.getvalue()
 
@@ -3058,8 +3059,8 @@ def crear_llave_coordinadora_marca(df_base: pd.DataFrame, columna_id: str = "coo
 
     df_tmp["_base_llave_coordinadora_marca"] = (
         df_tmp[columnas_llave]
+        .astype("string")
         .fillna("")
-        .astype(str)
         .apply(lambda s: s.str.strip())
         .agg("|".join, axis=1)
     )
@@ -3172,8 +3173,12 @@ def matriz_desplazamiento_coordinadoras(
         suffixes=(" origen", " destino")
     )
 
-    movimientos["Semana anterior"] = movimientos["Semana anterior"].fillna("Nueva")
-    movimientos["Semana actual"] = movimientos["Semana actual"].fillna("Baja")
+    movimientos["Semana anterior"] = (
+        movimientos["Semana anterior"].astype("string").fillna("Nueva")
+    )
+    movimientos["Semana actual"] = (
+        movimientos["Semana actual"].astype("string").fillna("Baja")
+    )
 
     if movimientos.empty:
         return movimientos, pd.DataFrame()
@@ -3331,7 +3336,7 @@ def tabla_improductivas_por_marca(movimientos: pd.DataFrame) -> pd.DataFrame:
     conteo = mov.groupby("Marca", dropna=False).size().reset_index(name="_llave_coordinadora_marca")
 
     conteo = conteo.rename(columns={"_llave_coordinadora_marca": "Coordinadoras que pasaron a Improductiva"})
-    conteo["Marca"] = conteo["Marca"].fillna("Sin marca").astype(str)
+    conteo["Marca"] = conteo["Marca"].astype("string").fillna("Sin marca")
     return conteo.sort_values("Coordinadoras que pasaron a Improductiva", ascending=False).reset_index(drop=True)
 
 
