@@ -3,6 +3,7 @@ import os
 import base64
 import html
 import re
+from datetime import date, timedelta
 from pathlib import Path
 from io import BytesIO
 
@@ -12,6 +13,11 @@ import streamlit as st
 import streamlit.components.v1 as components
 import plotly.express as px
 import plotly.graph_objects as go
+
+try:
+    from streamlit_calendar import calendar as calendario_interactivo
+except ImportError:
+    calendario_interactivo = None
 
 
 # ============================================================
@@ -5183,7 +5189,13 @@ if unidades_negocio:
                     disabled=seleccionado,
                 ):
                     st.session_state["unidad_negocio_inicio"] = unidad_texto
-                    for clave in ["inicio_pais", "inicio_marca", "inicio_moneda", "inicio_rango_semanas"]:
+                    for clave in [
+                        "inicio_pais",
+                        "inicio_marca",
+                        "inicio_moneda",
+                        "inicio_rango_semanas",
+                        "inicio_rango_fechas",
+                    ]:
                         st.session_state.pop(clave, None)
                     st.rerun()
 
@@ -5252,21 +5264,45 @@ if unidades_negocio:
             semanas_inicio[-8] if len(semanas_inicio) >= 8 else semanas_inicio[0],
             semanas_inicio[-1],
         )
-        rango_inicio_estado = st.session_state.get("inicio_rango_semanas")
+        anio_calendario_inicio = 2026
+        fecha_minima_inicio = date.fromisocalendar(
+            anio_calendario_inicio,
+            semanas_inicio[0],
+            1,
+        )
+        fecha_maxima_inicio = date.fromisocalendar(
+            anio_calendario_inicio,
+            semanas_inicio[-1],
+            7,
+        )
+        fechas_inicio_default = (
+            date.fromisocalendar(
+                anio_calendario_inicio,
+                rango_inicio_default[0],
+                1,
+            ),
+            date.fromisocalendar(
+                anio_calendario_inicio,
+                rango_inicio_default[1],
+                7,
+            ),
+        )
+        rango_fechas_estado = st.session_state.get("inicio_rango_fechas")
         if not (
-            isinstance(rango_inicio_estado, (list, tuple))
-            and len(rango_inicio_estado) == 2
-            and rango_inicio_estado[0] in semanas_inicio
-            and rango_inicio_estado[1] in semanas_inicio
-            and rango_inicio_estado[0] <= rango_inicio_estado[1]
+            isinstance(rango_fechas_estado, (list, tuple))
+            and len(rango_fechas_estado) == 2
+            and isinstance(rango_fechas_estado[0], date)
+            and isinstance(rango_fechas_estado[1], date)
+            and fecha_minima_inicio <= rango_fechas_estado[0] <= rango_fechas_estado[1] <= fecha_maxima_inicio
         ):
-            st.session_state.pop("inicio_rango_semanas", None)
+            rango_fechas_estado = fechas_inicio_default
+            st.session_state["inicio_rango_fechas"] = rango_fechas_estado
 
         st.markdown(
             '<div class="inicio-section-title inicio-filtros-title">2. Configura la vista inicial</div>',
             unsafe_allow_html=True,
         )
-        col_pais_inicio, col_marca_inicio, col_moneda_inicio, col_semana_inicio = st.columns(4)
+        col_pais_inicio, col_marca_inicio, col_moneda_inicio = st.columns(3)
 
         with col_pais_inicio:
             pais_inicio = st.selectbox(
@@ -5286,26 +5322,215 @@ if unidades_negocio:
                 options=opciones_moneda_inicio,
                 key="inicio_moneda",
             )
-        with col_semana_inicio:
-            rango_inicio = st.select_slider(
-                "Rango de semanas",
-                options=semanas_inicio,
-                value=rango_inicio_default,
-                format_func=lambda semana: f"S{int(semana)}",
-                key="inicio_rango_semanas",
-            )
 
-        ruta_calendario_presico = CARPETA_APP / "CALENDARIO PRESICO.png"
-        with st.expander("📅 Ver calendario Présico 2026 · aplica a México y LATAM"):
-            if ruta_calendario_presico.exists():
-                st.image(str(ruta_calendario_presico), use_container_width=True)
-                st.caption(
-                    "Referencia común para interpretar semanas, cierres mensuales, días festivos y fechas especiales."
-                )
-            else:
-                st.info(
-                    "Agrega CALENDARIO PRESICO.png en la misma carpeta de app.py para mostrar esta referencia."
-                )
+        st.markdown(
+            """
+            <div class="calendario-inicio-titulo">📅 Rango de fechas · Calendario Présico</div>
+            <div class="calendario-inicio-ayuda">
+                Arrastra desde el primer día hasta el último día del periodo. El tablero convertirá
+                automáticamente la selección al rango de semanas correspondiente.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        # Fechas corporativas recreadas a partir del calendario Présico 2026.
+        eventos_calendario_inicio = []
+        fechas_cierre = [
+            "2026-01-31", "2026-02-28", "2026-03-28", "2026-05-02",
+            "2026-05-30", "2026-06-27", "2026-08-01", "2026-08-29",
+            "2026-09-26", "2026-10-31", "2026-11-28", "2026-12-26",
+        ]
+        fechas_festivas = [
+            "2026-01-01", "2026-03-16", "2026-04-03", "2026-04-04",
+            "2026-05-01", "2026-09-16", "2026-11-16", "2026-12-25",
+        ]
+        fechas_aniversario = {
+            "2026-02-02": "Aniv. La Lupita",
+            "2026-02-22": "Aniv. La Casita",
+            "2026-04-16": "Aniv. La Güerita",
+            "2026-10-23": "Aniv. Préstamos Unidos",
+            "2026-10-28": "Aniv. Présico",
+            "2026-12-05": "Aniv. La Moderna",
+        }
+        for fecha_evento in fechas_cierre:
+            eventos_calendario_inicio.append(
+                {
+                    "title": "Cierre",
+                    "start": fecha_evento,
+                    "allDay": True,
+                    "backgroundColor": "#34436f",
+                    "borderColor": "#34436f",
+                    "textColor": "#ffffff",
+                }
+            )
+        for fecha_evento in fechas_festivas:
+            eventos_calendario_inicio.append(
+                {
+                    "title": "Festivo",
+                    "start": fecha_evento,
+                    "allDay": True,
+                    "backgroundColor": "#f5df28",
+                    "borderColor": "#f5df28",
+                    "textColor": "#5b4a00",
+                }
+            )
+        for fecha_evento, titulo_evento in fechas_aniversario.items():
+            eventos_calendario_inicio.append(
+                {
+                    "title": titulo_evento,
+                    "start": fecha_evento,
+                    "allDay": True,
+                    "backgroundColor": "#f5822a",
+                    "borderColor": "#f5822a",
+                    "textColor": "#ffffff",
+                }
+            )
+        eventos_calendario_inicio.append(
+            {
+                "title": "Liberación de listados",
+                "start": "2026-03-30",
+                "allDay": True,
+                "backgroundColor": "#84c35a",
+                "borderColor": "#84c35a",
+                "textColor": "#173b15",
+            }
+        )
+
+        # El rango vigente se dibuja como fondo azul para que permanezca visible
+        # después del rerun que produce la selección del componente.
+        eventos_calendario_inicio.insert(
+            0,
+            {
+                "title": "Periodo seleccionado",
+                "start": rango_fechas_estado[0].isoformat(),
+                "end": (rango_fechas_estado[1] + timedelta(days=1)).isoformat(),
+                "allDay": True,
+                "display": "background",
+                "backgroundColor": "#bcd7ff",
+            },
+        )
+
+        if calendario_interactivo is not None:
+            opciones_calendario_inicio = {
+                "initialView": "multiMonthTwoMonths",
+                "initialDate": fecha_minima_inicio.isoformat(),
+                "locale": "es",
+                "firstDay": 1,
+                "selectable": True,
+                "selectMirror": True,
+                "unselectAuto": False,
+                "weekNumbers": True,
+                "weekText": "S",
+                "showNonCurrentDates": False,
+                "fixedWeekCount": False,
+                "multiMonthMaxColumns": 2,
+                "views": {
+                    "multiMonthTwoMonths": {
+                        "type": "multiMonth",
+                        "duration": {"months": 2},
+                    }
+                },
+                "headerToolbar": {
+                    "left": "prev",
+                    "center": "title",
+                    "right": "next",
+                },
+                "validRange": {
+                    "start": fecha_minima_inicio.isoformat(),
+                    "end": (fecha_maxima_inicio + timedelta(days=1)).isoformat(),
+                },
+                "height": "auto",
+            }
+            estado_calendario_inicio = calendario_interactivo(
+                events=eventos_calendario_inicio,
+                options=opciones_calendario_inicio,
+                custom_css="""
+                    .fc { font-family: Arial, sans-serif; color: #19315d; }
+                    .fc .fc-toolbar-title { color: #082567; font-size: 1.25rem; font-weight: 900; }
+                    .fc .fc-button-primary { background: #082567; border-color: #082567; }
+                    .fc .fc-multimonth { border: 0; }
+                    .fc .fc-multimonth-month { border: 1px solid #dbe3ee; border-radius: 14px; padding: 10px; }
+                    .fc .fc-multimonth-title { color: #b56f1f; font-weight: 900; text-transform: uppercase; }
+                    .fc .fc-col-header-cell-cushion { color: #475569; font-weight: 800; }
+                    .fc .fc-daygrid-day-number { color: #1e293b; font-weight: 700; }
+                    .fc .fc-day-today { background: rgba(217,153,50,.12) !important; }
+                    .fc .fc-highlight { background: rgba(8,37,103,.22) !important; }
+                    .fc .fc-event { border-radius: 5px; font-size: .68rem; font-weight: 800; }
+                    .fc .fc-daygrid-week-number { background: #d9902f; color: white; font-weight: 900; }
+                """,
+                callbacks=["select"],
+                key="calendario_presico_inicio_v1",
+            ) or {}
+
+            if estado_calendario_inicio.get("callback") == "select":
+                seleccion_calendario = estado_calendario_inicio.get("select", {})
+                inicio_iso = str(seleccion_calendario.get("start", ""))[:10]
+                fin_exclusivo_iso = str(seleccion_calendario.get("end", ""))[:10]
+                try:
+                    nueva_fecha_inicio = date.fromisoformat(inicio_iso)
+                    nueva_fecha_fin = date.fromisoformat(fin_exclusivo_iso) - timedelta(days=1)
+                except (TypeError, ValueError):
+                    nueva_fecha_inicio = None
+                    nueva_fecha_fin = None
+
+                if (
+                    nueva_fecha_inicio is not None
+                    and fecha_minima_inicio <= nueva_fecha_inicio <= nueva_fecha_fin <= fecha_maxima_inicio
+                    and (nueva_fecha_inicio, nueva_fecha_fin) != tuple(rango_fechas_estado)
+                ):
+                    st.session_state["inicio_rango_fechas"] = (
+                        nueva_fecha_inicio,
+                        nueva_fecha_fin,
+                    )
+                    st.rerun()
+        else:
+            # Respaldo nativo: mantiene la aplicación operativa incluso si la
+            # dependencia visual todavía no se ha instalado en Streamlit Cloud.
+            rango_fechas_nativo = st.date_input(
+                "Selecciona la fecha inicial y final",
+                value=tuple(rango_fechas_estado),
+                min_value=fecha_minima_inicio,
+                max_value=fecha_maxima_inicio,
+                format="DD/MM/YYYY",
+                key="calendario_presico_respaldo",
+            )
+            if isinstance(rango_fechas_nativo, (list, tuple)) and len(rango_fechas_nativo) == 2:
+                st.session_state["inicio_rango_fechas"] = tuple(rango_fechas_nativo)
+                rango_fechas_estado = tuple(rango_fechas_nativo)
+
+        rango_fechas_estado = tuple(st.session_state["inicio_rango_fechas"])
+        semana_inicio_calendario = int(rango_fechas_estado[0].isocalendar().week)
+        semana_fin_calendario = int(rango_fechas_estado[1].isocalendar().week)
+        rango_inicio = (
+            min(semanas_inicio, key=lambda semana: abs(semana - semana_inicio_calendario)),
+            min(semanas_inicio, key=lambda semana: abs(semana - semana_fin_calendario)),
+        )
+        if rango_inicio[0] > rango_inicio[1]:
+            rango_inicio = (rango_inicio[1], rango_inicio[0])
+        st.session_state["inicio_rango_semanas"] = rango_inicio
+
+        meses_es = [
+            "enero", "febrero", "marzo", "abril", "mayo", "junio",
+            "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre",
+        ]
+        st.markdown(
+            f"""
+            <div class="calendario-inicio-resumen">
+                <b>Periodo seleccionado:</b>
+                {rango_fechas_estado[0].day} de {meses_es[rango_fechas_estado[0].month - 1]}
+                al {rango_fechas_estado[1].day} de {meses_es[rango_fechas_estado[1].month - 1]} de {anio_calendario_inicio}
+                <span>Semanas {rango_inicio[0]}–{rango_inicio[1]}</span>
+            </div>
+            <div class="calendario-leyenda">
+                <span><i class="leyenda-cierre"></i>Cierre mensual</span>
+                <span><i class="leyenda-festivo"></i>Día festivo</span>
+                <span><i class="leyenda-aniversario"></i>Aniversario</span>
+                <span><i class="leyenda-listado"></i>Liberación de listados</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
         col_entrar_izq, col_entrar, col_entrar_der = st.columns([1.2, 1, 1.2])
         with col_entrar:
@@ -5432,6 +5657,35 @@ if unidades_negocio:
             .mapa-card-title {{ color:#082567; font-size:22px; font-weight:950; margin-top:2px; }}
             .mapa-card-subtitle {{ color:#64748b; font-size:14px; font-weight:650; margin-top:2px; }}
             .inicio-filtros-title {{ margin-top:26px; }}
+            .calendario-inicio-titulo {{
+                color:#082567; font-size:19px; font-weight:950; margin:24px 0 3px;
+            }}
+            .calendario-inicio-ayuda {{
+                color:#64748b; font-size:14px; font-weight:600; margin-bottom:10px;
+            }}
+            .calendario-inicio-resumen {{
+                display:flex; align-items:center; gap:8px; flex-wrap:wrap;
+                color:#1e293b; background:#ffffff; border:1px solid #dbe3ee;
+                border-radius:12px; padding:11px 14px; margin-top:8px;
+                box-shadow:0 5px 14px rgba(15,23,42,.05);
+            }}
+            .calendario-inicio-resumen b {{ color:#082567; }}
+            .calendario-inicio-resumen span {{
+                margin-left:auto; color:#ffffff; background:#082567;
+                border-radius:999px; padding:4px 10px; font-weight:850;
+            }}
+            .calendario-leyenda {{
+                display:flex; flex-wrap:wrap; gap:18px; margin:10px 2px 22px;
+                color:#475569; font-size:12px; font-weight:750;
+            }}
+            .calendario-leyenda span {{ display:flex; align-items:center; gap:6px; }}
+            .calendario-leyenda i {{
+                width:13px; height:13px; display:inline-block; border-radius:4px;
+            }}
+            .leyenda-cierre {{ background:#34436f; }}
+            .leyenda-festivo {{ background:#f5df28; }}
+            .leyenda-aniversario {{ background:#f5822a; }}
+            .leyenda-listado {{ background:#84c35a; }}
             div.stButton > button {{ border-radius:12px !important; font-weight:850 !important; }}
             div.stButton > button[kind="primary"] {{
                 background:#082567 !important; color:#ffffff !important;
