@@ -14,6 +14,18 @@ import streamlit.components.v1 as components
 import plotly.express as px
 import plotly.graph_objects as go
 
+try:
+    from pptx import Presentation
+    from pptx.chart.data import ChartData
+    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
+    from pptx.enum.shapes import MSO_SHAPE
+    from pptx.enum.text import PP_ALIGN
+    from pptx.util import Inches, Pt
+    from pptx.dml.color import RGBColor
+    PPTX_DISPONIBLE = True
+except Exception:
+    PPTX_DISPONIBLE = False
+
 
 # ============================================================
 # CONFIGURACIÓN
@@ -4614,6 +4626,204 @@ def generar_parrafo_resumen_cobranza(resumen_cobranza: pd.DataFrame | None, sema
     return " ".join(partes)
 
 
+def generar_powerpoint_analisis(
+    resumen: pd.DataFrame,
+    df_cartera: pd.DataFrame,
+    semana_actual: int,
+    semana_anterior,
+    comentario_resumen: str,
+    unidad: str,
+    modo_moneda: str,
+    secciones: list[str],
+    incluir_comentarios: bool = True,
+) -> bytes | None:
+    """Construye una presentación 16:9 editable con la información filtrada."""
+    if not PPTX_DISPONIBLE:
+        return None
+
+    azul = RGBColor(8, 37, 103)
+    amarillo = RGBColor(240, 207, 44)
+    gris = RGBColor(100, 116, 139)
+    gris_claro = RGBColor(226, 232, 240)
+    verde = RGBColor(31, 157, 96)
+    rojo = RGBColor(214, 69, 65)
+
+    prs = Presentation()
+    prs.slide_width = Inches(13.333)
+    prs.slide_height = Inches(7.5)
+
+    def agregar_texto(slide, texto, x, y, ancho, alto, tamano=18, negrita=False, color=azul, alineacion=PP_ALIGN.LEFT):
+        caja = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(ancho), Inches(alto))
+        marco = caja.text_frame
+        marco.clear()
+        marco.word_wrap = True
+        parrafo = marco.paragraphs[0]
+        parrafo.alignment = alineacion
+        corrida = parrafo.add_run()
+        corrida.text = str(texto)
+        corrida.font.name = "Arial"
+        corrida.font.size = Pt(tamano)
+        corrida.font.bold = negrita
+        corrida.font.color.rgb = color
+        return caja
+
+    def agregar_encabezado(slide, titulo, subtitulo=""):
+        agregar_texto(slide, titulo, .55, .28, 8.9, .55, 26, True, azul)
+        linea = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(.55), Inches(.91), Inches(1.05), Inches(.05))
+        linea.fill.solid()
+        linea.fill.fore_color.rgb = amarillo
+        linea.line.fill.background()
+        agregar_texto(slide, subtitulo, 9.1, .33, 3.65, .34, 10, False, gris, PP_ALIGN.RIGHT)
+
+    def aplicar_estilo_tabla(tabla, tamano=10):
+        for fila_idx, fila in enumerate(tabla.rows):
+            for celda in fila.cells:
+                celda.margin_left = Inches(.05)
+                celda.margin_right = Inches(.05)
+                celda.margin_top = Inches(.02)
+                celda.margin_bottom = Inches(.02)
+                celda.fill.solid()
+                celda.fill.fore_color.rgb = azul if fila_idx == 0 else RGBColor(246, 249, 253)
+                for parrafo in celda.text_frame.paragraphs:
+                    for corrida in parrafo.runs:
+                        corrida.font.name = "Arial"
+                        corrida.font.size = Pt(tamano)
+                        corrida.font.bold = fila_idx == 0
+                        corrida.font.color.rgb = RGBColor(255, 255, 255) if fila_idx == 0 else azul
+
+    unidad_texto = str(unidad or "Todas las unidades")
+    comparativo_texto = f"Semana {semana_actual} vs. semana {semana_anterior}" if semana_anterior is not None else f"Semana {semana_actual}"
+
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    agregar_encabezado(slide, "Análisis semanal", f"{unidad_texto} · {comparativo_texto}")
+    agregar_texto(slide, "Lectura ejecutiva", .65, 1.17, 4.4, .42, 18, True, azul)
+    comentario_ppt = str(comentario_resumen or "Sin comentario disponible.")
+    if not incluir_comentarios:
+        comentario_ppt = "La presentación se generó sin comentarios ejecutivos."
+    agregar_texto(slide, comentario_ppt, .65, 1.68, 5.05, 4.8, 14, False, gris)
+
+    metricas_portada = []
+    if resumen is not None and not resumen.empty:
+        for indicador in ["Clientes Totales", "Clientes al corriente", "Cartera Total", "Saldo en atraso"]:
+            fila = resumen[resumen["Indicador"].astype(str) == indicador]
+            if not fila.empty:
+                metricas_portada.append((
+                    indicador,
+                    fila.iloc[0].get(f"Dato sem {semana_actual}", 0),
+                    fila.iloc[0].get("Variación vs sem ant", np.nan),
+                ))
+
+    for indice, (indicador, valor, variacion) in enumerate(metricas_portada[:4]):
+        columna = indice % 2
+        fila_tarjeta = indice // 2
+        x = 6.08 + columna * 3.15
+        y = 1.55 + fila_tarjeta * 2.25
+        tarjeta = slide.shapes.add_shape(MSO_SHAPE.ROUNDED_RECTANGLE, Inches(x), Inches(y), Inches(2.85), Inches(1.78))
+        tarjeta.fill.solid()
+        tarjeta.fill.fore_color.rgb = RGBColor(238, 245, 253)
+        tarjeta.line.color.rgb = gris_claro
+        agregar_texto(slide, indicador, x + .18, y + .18, 2.45, .3, 11, True, azul)
+        agregar_texto(slide, formato_numero(valor), x + .18, y + .58, 2.45, .52, 23, True, azul)
+        if pd.notna(variacion):
+            color_var = verde if float(variacion) >= 0 else rojo
+            agregar_texto(slide, formato_variacion(variacion), x + .18, y + 1.23, 2.45, .28, 11, True, color_var)
+
+    if "KPIs" in secciones and resumen is not None and not resumen.empty:
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        agregar_encabezado(slide, "KPIs", f"{unidad_texto} · {comparativo_texto}")
+        filas_kpi = []
+        for _, fila in resumen.head(10).iterrows():
+            filas_kpi.append([
+                str(fila.get("Indicador", "")),
+                formato_numero(fila.get(f"Dato sem {semana_actual}", 0)),
+                formato_variacion(fila.get("Variación vs sem ant", 0)),
+            ])
+        forma = slide.shapes.add_table(len(filas_kpi) + 1, 3, Inches(.75), Inches(1.3), Inches(11.8), Inches(5.55))
+        tabla = forma.table
+        for columna, encabezado in enumerate(["Indicador", f"Semana {semana_actual}", "Variación"]):
+            tabla.cell(0, columna).text = encabezado
+        for fila_idx, valores in enumerate(filas_kpi, start=1):
+            for columna, valor in enumerate(valores):
+                tabla.cell(fila_idx, columna).text = str(valor)
+        aplicar_estilo_tabla(tabla, 11)
+
+    if "Evolución semanal" in secciones and "Semana del año" in df_cartera.columns:
+        indicador_evolucion = "Cartera Total" if "Cartera Total" in df_cartera.columns else None
+        if indicador_evolucion is None:
+            candidatos = [c for c in INDICADORES_BASE if c in df_cartera.columns]
+            indicador_evolucion = candidatos[0] if candidatos else None
+        if indicador_evolucion:
+            evolucion = df_cartera.groupby("Semana del año", dropna=False)[indicador_evolucion].sum().reset_index().sort_values("Semana del año").tail(8)
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            agregar_encabezado(slide, "Evolución semanal", f"{indicador_evolucion} · {etiqueta_moneda(modo_moneda)}")
+            datos = ChartData()
+            datos.categories = [f"S{int(x)}" for x in evolucion["Semana del año"].tolist()]
+            datos.add_series(indicador_evolucion, [float(x) for x in evolucion[indicador_evolucion].tolist()])
+            grafica = slide.shapes.add_chart(XL_CHART_TYPE.LINE_MARKERS, Inches(.8), Inches(1.35), Inches(11.7), Inches(5.25), datos).chart
+            grafica.has_legend = False
+            grafica.value_axis.has_major_gridlines = True
+            grafica.value_axis.major_gridlines.format.line.color.rgb = gris_claro
+
+    if "Tipo de coordinadora" in secciones and {"Semana del año", "Tipo Coordinadora"}.issubset(df_cartera.columns):
+        distribucion = df_cartera[df_cartera["Semana del año"] == semana_actual].groupby("Tipo Coordinadora", dropna=False).size().reset_index(name="Coordinadoras").sort_values("Coordinadoras", ascending=False)
+        if not distribucion.empty:
+            slide = prs.slides.add_slide(prs.slide_layouts[6])
+            agregar_encabezado(slide, "Tipo de coordinadora", f"Semana {semana_actual}")
+            datos = ChartData()
+            datos.categories = distribucion["Tipo Coordinadora"].astype(str).tolist()
+            datos.add_series("Coordinadoras", distribucion["Coordinadoras"].astype(float).tolist())
+            grafica = slide.shapes.add_chart(XL_CHART_TYPE.DOUGHNUT, Inches(.8), Inches(1.25), Inches(7.0), Inches(5.5), datos).chart
+            grafica.has_legend = True
+            grafica.legend.position = XL_LEGEND_POSITION.RIGHT
+            agregar_texto(slide, formato_numero(distribucion["Coordinadoras"].sum()), 8.45, 2.05, 3.5, .75, 31, True, azul)
+            agregar_texto(slide, "Coordinadoras registradas", 8.45, 2.82, 3.5, .45, 15, False, gris)
+
+    if "Matriz de movimientos" in secciones and "Semana del año" in df_cartera.columns:
+        semanas = sorted(int(x) for x in df_cartera["Semana del año"].dropna().unique())
+        if len(semanas) >= 2:
+            _, matriz = matriz_desplazamiento_coordinadoras(df_cartera, semanas[-2], semanas[-1])
+            if matriz is not None and not matriz.empty:
+                matriz_ppt = matriz.copy().iloc[:7, :7]
+                slide = prs.slides.add_slide(prs.slide_layouts[6])
+                agregar_encabezado(slide, "Matriz de movimientos", f"Semana {semanas[-2]} vs. semana {semanas[-1]}")
+                forma = slide.shapes.add_table(len(matriz_ppt.index) + 1, len(matriz_ppt.columns) + 1, Inches(.65), Inches(1.25), Inches(12.0), Inches(5.7))
+                tabla = forma.table
+                tabla.cell(0, 0).text = "Origen / destino"
+                for columna, etiqueta in enumerate(matriz_ppt.columns, start=1):
+                    tabla.cell(0, columna).text = str(etiqueta)
+                for fila_idx, (indice, fila) in enumerate(matriz_ppt.iterrows(), start=1):
+                    tabla.cell(fila_idx, 0).text = str(indice)
+                    for columna, valor in enumerate(fila.tolist(), start=1):
+                        tabla.cell(fila_idx, columna).text = formato_numero(valor)
+                aplicar_estilo_tabla(tabla, 9)
+
+    if "Top / Bottom" in secciones and "Semana del año" in df_cartera.columns:
+        nivel_top = next((c for c in ["País", "Sucursal", "Zona", "Ruta"] if c in df_cartera.columns), None)
+        indicador_top = "Cartera Total" if "Cartera Total" in df_cartera.columns else None
+        if nivel_top and indicador_top:
+            ranking = df_cartera[df_cartera["Semana del año"] == semana_actual].groupby(nivel_top, dropna=False)[indicador_top].sum().reset_index().sort_values(indicador_top, ascending=False)
+            if not ranking.empty:
+                seleccion_ranking = pd.concat([ranking.head(5), ranking.tail(5)]).drop_duplicates(subset=[nivel_top])
+                slide = prs.slides.add_slide(prs.slide_layouts[6])
+                agregar_encabezado(slide, "Top / Bottom", f"{indicador_top} por {nivel_top}")
+                datos = ChartData()
+                datos.categories = seleccion_ranking[nivel_top].astype(str).tolist()
+                datos.add_series(indicador_top, seleccion_ranking[indicador_top].astype(float).tolist())
+                grafica = slide.shapes.add_chart(XL_CHART_TYPE.BAR_CLUSTERED, Inches(.9), Inches(1.25), Inches(11.6), Inches(5.65), datos).chart
+                grafica.has_legend = False
+
+    if "Conclusiones" in secciones:
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        agregar_encabezado(slide, "Conclusiones", f"{unidad_texto} · semana {semana_actual}")
+        agregar_texto(slide, str(comentario_resumen or "Sin conclusiones disponibles."), .9, 1.35, 11.3, 4.9, 18, False, azul)
+        agregar_texto(slide, "Fuente: tablero de Productividad y Cobranza", .9, 6.65, 11.3, .3, 10, False, gris)
+
+    salida = BytesIO()
+    prs.save(salida)
+    salida.seek(0)
+    return salida.getvalue()
+
+
 def abrir_modal_resumen_pais(
     resumen: pd.DataFrame,
     semana_actual: int,
@@ -4621,39 +4831,21 @@ def abrir_modal_resumen_pais(
     comentario_resumen: str,
     modo_moneda: str,
     filtros_aplicados: dict,
+    df_cartera: pd.DataFrame | None = None,
+    unidad: str = "",
     resumen_cobranza: pd.DataFrame | None = None,
     semana_actual_cobranza: int | None = None,
     semana_anterior_cobranza: int | None = None,
 ):
-    """
-    Renderiza el resumen ejecutivo como página completa.
-    Ya no usa st.dialog; así no queda encerrado en una ventana flotante.
-    """
-    if st.button("← Volver al tablero", key="btn_volver_desde_resumen"):
-        volver_al_tablero()
-
+    """Renderiza la tercera etapa: Análisis y generación de PowerPoint."""
     filtros_visibles = []
     for col, val in filtros_aplicados.items():
         if val:
             valores = ", ".join([str(x) for x in val])
             filtros_visibles.append(f"{col}: {valores}")
 
-    filtros_texto = " | ".join(filtros_visibles) if filtros_visibles else "Todos los países / todas las marcas"
+    filtros_texto = " · ".join(filtros_visibles) if filtros_visibles else "Todos los países y marcas"
     semana_anterior_txt = semana_anterior if semana_anterior is not None else "sin semana anterior"
-
-    st.markdown("# Resumen semanal de todo el país")
-    st.markdown(
-        f"""
-        <span class="modal-resumen-meta">Semana actual: {semana_actual}</span>
-        <span class="modal-resumen-meta">Comparativo: {semana_anterior_txt}</span>
-        <span class="modal-resumen-meta">Moneda: {etiqueta_moneda(modo_moneda)}</span>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.caption(f"Filtros aplicados: {filtros_texto}")
-
-    st.markdown("### Lectura ejecutiva generada por IA")
     comentario_resumen_completo = str(comentario_resumen)
     parrafo_cobranza = generar_parrafo_resumen_cobranza(
         resumen_cobranza=resumen_cobranza,
@@ -4663,87 +4855,199 @@ def abrir_modal_resumen_pais(
     if parrafo_cobranza:
         comentario_resumen_completo = comentario_resumen_completo + "\n\n" + parrafo_cobranza
 
-    comentario_seguro = html.escape(comentario_resumen_completo).replace("\n", "<br><br>")
-    st.markdown(
-        f'<div class="modal-resumen-card resumen-pagina-card">{comentario_seguro}</div>',
-        unsafe_allow_html=True
-    )
-
+    metricas_modal = []
     if resumen is not None and not resumen.empty:
         metricas_modal = [
-            c for c in [
-                "Clientes Totales",
-                "Clientes al corriente",
-                "Cartera Total",
-                "Saldo en atraso",
-            ]
+            c for c in ["Clientes Totales", "Clientes al corriente", "Cartera Total", "Saldo en atraso"]
             if c in resumen["Indicador"].astype(str).tolist()
         ]
 
-        if metricas_modal:
-            cols_modal = st.columns(len(metricas_modal))
-            for idx, indicador in enumerate(metricas_modal):
-                fila = resumen[resumen["Indicador"] == indicador].iloc[0]
-                with cols_modal[idx]:
-                    tarjeta_kpi(
-                        label=indicador,
-                        valor=fila.get(f"Dato sem {semana_actual}", 0),
-                        variacion=fila.get("Variación vs sem ant", np.nan)
-                        if semana_anterior is not None else None
+    tarjetas_html = []
+    for indicador in metricas_modal[:4]:
+        fila = resumen[resumen["Indicador"] == indicador].iloc[0]
+        valor = fila.get(f"Dato sem {semana_actual}", 0)
+        variacion = fila.get("Variación vs sem ant", np.nan) if semana_anterior is not None else np.nan
+        clase_var = "positiva" if pd.notna(variacion) and float(variacion) >= 0 else "negativa"
+        texto_var = formato_variacion(variacion) if pd.notna(variacion) else "Sin comparativo"
+        tarjetas_html.append(
+            '<div class="analisis-kpi">'
+            f'<span>{html.escape(indicador)}</span>'
+            f'<strong>{formato_numero(valor)}</strong>'
+            f'<small class="{clase_var}">{texto_var}</small>'
+            '</div>'
+        )
+
+    comentario_seguro = html.escape(comentario_resumen_completo).replace("\n", "<br><br>")
+    unidad_segura = html.escape(str(unidad or "Todas las unidades"))
+
+    st.markdown(
+        """
+        <style>
+        html, body, .stApp, [data-testid="stAppViewContainer"],
+        [data-testid="stAppViewContainer"] > .main {
+            width:100% !important;
+            max-width:100% !important;
+            height:100vh !important;
+            max-height:100vh !important;
+            overflow:hidden !important;
+        }
+        [data-testid="stAppViewContainer"] .main .block-container {
+            width:100% !important;
+            max-width:100% !important;
+            height:100vh !important;
+            max-height:100vh !important;
+            overflow:hidden !important;
+            box-sizing:border-box !important;
+            padding:.35rem .65rem .45rem !important;
+        }
+        .st-key-filtros_superiores,
+        .st-key-ayuda_tablero,
+        [data-testid="stElementContainer"]:has(.gestion-encabezado),
+        div[data-testid="stMarkdownContainer"]:has(.gestion-encabezado) {
+            display:none !important;
+            height:0 !important;
+            min-height:0 !important;
+            margin:0 !important;
+            padding:0 !important;
+        }
+        .st-key-analisis_pagina {
+            width:100% !important;
+            max-width:100% !important;
+            height:calc(100vh - .8rem) !important;
+            max-height:calc(100vh - .8rem) !important;
+            overflow:hidden !important;
+        }
+        .st-key-analisis_pagina > div[data-testid="stVerticalBlock"] { gap:.45rem !important; }
+        .analisis-encabezado {
+            display:flex; align-items:center; justify-content:space-between; gap:20px;
+            height:58px; padding:7px 16px; box-sizing:border-box;
+            background:#ffffff; border:1px solid #dbe3ee; border-radius:10px;
+            box-shadow:0 5px 16px rgba(15,23,42,.06);
+        }
+        .analisis-marca { color:#082567; font-size:20px; font-weight:950; white-space:nowrap; }
+        .analisis-pasos { display:flex; align-items:center; justify-content:flex-end; gap:11px; flex:1; }
+        .analisis-paso { display:flex; align-items:center; gap:7px; color:#52698d; font-size:12px; font-weight:800; white-space:nowrap; }
+        .analisis-paso i { display:flex; align-items:center; justify-content:center; width:27px; height:27px; border-radius:50%; background:#d9e9fb; color:#082567; font-style:normal; }
+        .analisis-paso.activo { color:#082567; }
+        .analisis-paso.activo i { background:#e7c42d; color:#ffffff; }
+        .analisis-linea { width:45px; height:2px; background:#a9c8ed; }
+        .analisis-slide-preview, .st-key-analisis_configuracion {
+            height:calc(100vh - 86px); max-height:calc(100vh - 86px);
+            overflow:hidden; box-sizing:border-box; background:#ffffff;
+            border:1px solid #dbe3ee; border-radius:11px;
+            box-shadow:0 7px 20px rgba(15,23,42,.07);
+        }
+        .analisis-slide-preview { padding:clamp(16px,2vw,28px); }
+        .analisis-titulo { color:#082567; font-size:clamp(26px,2.5vw,42px); line-height:1; font-weight:950; margin-bottom:8px; }
+        .analisis-subtitulo { color:#64748b; font-size:12px; margin-bottom:15px; }
+        .analisis-kpis { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin:4px 0 14px; }
+        .analisis-kpi { min-width:0; padding:11px 12px; border-radius:9px; background:#eef5fd; border:1px solid #dce8f6; }
+        .analisis-kpi span { display:block; color:#587098; font-size:10px; font-weight:800; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+        .analisis-kpi strong { display:block; color:#082567; font-size:clamp(17px,1.6vw,26px); line-height:1.15; margin:5px 0 3px; }
+        .analisis-kpi small { font-size:10px; font-weight:900; }
+        .analisis-kpi small.positiva { color:#17864f; }
+        .analisis-kpi small.negativa { color:#c83d3d; }
+        .analisis-lectura-titulo { color:#082567; font-size:16px; font-weight:950; margin:5px 0 7px; }
+        .analisis-lectura {
+            color:#334b74; font-size:clamp(12px,1.05vw,16px); line-height:1.42;
+            max-height:calc(100vh - 335px); overflow:hidden;
+            display:-webkit-box; -webkit-line-clamp:12; -webkit-box-orient:vertical;
+        }
+        .st-key-analisis_configuracion { padding:15px 16px 12px; }
+        .analisis-config-encabezado h3 { color:#082567; font-size:20px; margin:0 0 2px; }
+        .analisis-config-encabezado p { color:#64748b; font-size:11px; margin:0 0 8px; }
+        .st-key-analisis_configuracion > div[data-testid="stVerticalBlock"] { gap:.22rem !important; }
+        .st-key-analisis_configuracion [data-testid="stCheckbox"] { margin:0 !important; }
+        .st-key-analisis_configuracion [data-testid="stCheckbox"] label { padding:3px 7px !important; border-radius:6px; background:#eef5fd; }
+        .st-key-analisis_configuracion [data-testid="stSelectbox"] { margin-top:2px !important; }
+        .st-key-analisis_configuracion [data-testid="stDownloadButton"] button { min-height:42px !important; }
+        @media (max-width:900px) {
+            html, body, .stApp, [data-testid="stAppViewContainer"], [data-testid="stAppViewContainer"] > .main { overflow-y:auto !important; height:auto !important; max-height:none !important; }
+            [data-testid="stAppViewContainer"] .main .block-container, .st-key-analisis_pagina { height:auto !important; max-height:none !important; overflow:visible !important; }
+            .analisis-pasos { overflow-x:auto; justify-content:flex-start; }
+            .analisis-paso b { display:none; }
+            .analisis-slide-preview, .st-key-analisis_configuracion { height:auto; max-height:none; }
+            .analisis-kpis { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    pagina_analisis = st.container(key="analisis_pagina")
+    with pagina_analisis:
+        col_volver, col_cabecera = st.columns([1.05, 10.95], gap="small")
+        with col_volver:
+            if st.button("← Gestión", key="btn_volver_desde_resumen", use_container_width=True):
+                volver_al_tablero()
+        with col_cabecera:
+            st.markdown(
+                '<div class="analisis-encabezado">'
+                '<div class="analisis-marca">Gestión de Portafolio</div>'
+                '<div class="analisis-pasos">'
+                '<div class="analisis-paso"><i>✓</i><b>1. Seleccionar unidad</b></div>'
+                '<div class="analisis-linea"></div>'
+                '<div class="analisis-paso"><i>✓</i><b>2. Gestión</b></div>'
+                '<div class="analisis-linea"></div>'
+                '<div class="analisis-paso activo"><i>3</i><b>3. Análisis</b></div>'
+                '</div></div>',
+                unsafe_allow_html=True,
+            )
+
+        col_vista, col_config = st.columns([3.55, 1.35], gap="medium")
+        with col_vista:
+            st.markdown(
+                '<div class="analisis-slide-preview">'
+                '<div class="analisis-titulo">Análisis semanal</div>'
+                f'<div class="analisis-subtitulo">{unidad_segura} · Semana {semana_actual} · Comparativo {semana_anterior_txt} · {html.escape(etiqueta_moneda(modo_moneda))}<br>{html.escape(filtros_texto)}</div>'
+                f'<div class="analisis-kpis">{"".join(tarjetas_html)}</div>'
+                '<div class="analisis-lectura-titulo">Lectura ejecutiva</div>'
+                f'<div class="analisis-lectura">{comentario_seguro}</div>'
+                '</div>',
+                unsafe_allow_html=True,
+            )
+
+        with col_config:
+            configuracion = st.container(key="analisis_configuracion")
+            with configuracion:
+                st.markdown('<div class="analisis-config-encabezado"><h3>Generar PowerPoint</h3><p>Selecciona las secciones que incluirá el archivo.</p></div>', unsafe_allow_html=True)
+                opciones_ppt = [
+                    "KPIs",
+                    "Evolución semanal",
+                    "Tipo de coordinadora",
+                    "Matriz de movimientos",
+                    "Top / Bottom",
+                    "Conclusiones",
+                ]
+                secciones_ppt = [
+                    opcion for opcion in opciones_ppt
+                    if st.checkbox(opcion, value=True, key=f"ppt_{normalizar_texto_tc(opcion).lower().replace(' ', '_').replace('/', '_')}")
+                ]
+                st.selectbox("Formato", ["16:9"], key="formato_powerpoint", disabled=True)
+                incluir_comentarios = st.toggle("Incluir comentarios", value=True, key="ppt_incluir_comentarios")
+
+                datos_ppt = generar_powerpoint_analisis(
+                    resumen=resumen,
+                    df_cartera=df_cartera if df_cartera is not None else pd.DataFrame(),
+                    semana_actual=semana_actual,
+                    semana_anterior=semana_anterior,
+                    comentario_resumen=comentario_resumen_completo,
+                    unidad=unidad,
+                    modo_moneda=modo_moneda,
+                    secciones=secciones_ppt,
+                    incluir_comentarios=incluir_comentarios,
+                )
+                if datos_ppt is None:
+                    st.error("Falta instalar python-pptx para generar la presentación.")
+                else:
+                    st.download_button(
+                        "Generar PowerPoint",
+                        data=datos_ppt,
+                        file_name=f"analisis_{normalizar_texto_tc(unidad or 'unidad').lower().replace(' ', '_')}_semana_{semana_actual}.pptx",
+                        mime="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                        key="descargar_powerpoint_analisis",
+                        use_container_width=True,
                     )
-
-        st.markdown("### Detalle del resumen")
-        tabla_resumen_fmt = aplicar_formato_tabla(resumen)
-        st.dataframe(
-            tabla_resumen_fmt,
-            use_container_width=True,
-            hide_index=True,
-            height=altura_tabla_resumen(tabla_resumen_fmt, max_height=360)
-        )
-        boton_descargar_xlsx(
-            resumen,
-            "Descargar detalle del resumen XLSX",
-            f"detalle_resumen_semana_{semana_actual}.xlsx",
-            key="descargar_resumen_cartera_xlsx"
-        )
-
-    if resumen_cobranza is not None and not resumen_cobranza.empty:
-        st.markdown("### Resumen de cobranza")
-
-        metricas_cob_modal = [
-            c for c in ["Cuota Total Cobranza", "Recuperación semana", "% de Cumplimiento"]
-            if c in resumen_cobranza["Indicador"].astype(str).tolist()
-        ]
-
-        if metricas_cob_modal and semana_actual_cobranza is not None:
-            col_cob_modal = st.columns(len(metricas_cob_modal))
-            for idx, indicador in enumerate(metricas_cob_modal):
-                fila_cob = resumen_cobranza[resumen_cobranza["Indicador"] == indicador].iloc[0]
-                col_dato_cob = f"Dato sem {semana_actual_cobranza}"
-                valor_cob = fila_cob.get(col_dato_cob, 0)
-                var_cob = fila_cob.get("Variación vs sem ant", np.nan)
-                with col_cob_modal[idx]:
-                    tarjeta_kpi(
-                        label=indicador,
-                        valor=valor_cob,
-                        variacion=var_cob if semana_anterior_cobranza is not None else None
-                    )
-
-        tabla_cobranza_fmt = aplicar_formato_tabla_resumen_mixto(resumen_cobranza)
-        st.dataframe(
-            tabla_cobranza_fmt,
-            use_container_width=True,
-            hide_index=True,
-            height=altura_tabla_resumen(tabla_cobranza_fmt, max_height=300)
-        )
-        boton_descargar_xlsx(
-            resumen_cobranza,
-            "Descargar resumen de cobranza XLSX",
-            f"resumen_cobranza_semana_{semana_actual_cobranza}.xlsx",
-            key="descargar_resumen_cobranza_xlsx"
-        )
-    else:
-        st.info("No se encontró información de Cobranza para incluirla en este resumen.")
 
 
 def generar_comentario_evolucion(evol: pd.DataFrame, indicador: str):
@@ -5112,9 +5416,8 @@ if unidades_negocio:
         )
         if unidad_desde_mapa is not None:
             cambio_de_unidad = unidad_guardada != unidad_desde_mapa
-            seccion_desde_enlace = str(st.query_params.get("seccion", "resumen"))
+            seccion_desde_enlace = str(st.query_params.get("seccion", "kpis"))
             if seccion_desde_enlace not in {
-                "resumen",
                 "kpis",
                 "evolucion",
                 "coordinadoras",
@@ -5122,7 +5425,7 @@ if unidades_negocio:
                 "top-bottom",
                 "conclusiones",
             }:
-                seccion_desde_enlace = "resumen"
+                seccion_desde_enlace = "kpis"
             st.session_state["unidad_negocio_app"] = unidad_desde_mapa
             st.session_state["gestion_seccion_activa"] = seccion_desde_enlace
             if cambio_de_unidad:
@@ -5134,7 +5437,7 @@ if unidades_negocio:
 
     if unidad_guardada is None:
         # La pantalla inicial funciona como el primer paso de la secuencia:
-        # alcance -> análisis -> presentación.
+        # alcance -> gestión -> análisis.
         unidad_inicio = st.session_state.get("unidad_negocio_inicio")
         if unidad_inicio not in unidades_negocio:
             unidad_inicio = next(
@@ -5155,11 +5458,11 @@ if unidades_negocio:
                 <div class="inicio-subtitle">Selecciona la unidad de negocio para abrir el tablero.</div>
             </div>
             <div class="inicio-stepper">
-                <div class="inicio-step activo"><span>1</span><b>Seleccionar alcance</b></div>
+                <div class="inicio-step activo"><span>1</span><b>Seleccionar unidad</b></div>
                 <div class="inicio-linea"></div>
-                <div class="inicio-step"><span>2</span><b>Analizar resultados</b></div>
+                <div class="inicio-step"><span>2</span><b>Gestión</b></div>
                 <div class="inicio-linea"></div>
-                <div class="inicio-step"><span>3</span><b>Generar presentación</b></div>
+                <div class="inicio-step"><span>3</span><b>Análisis</b></div>
             </div>
             <div class="inicio-section-title">1. Elige la unidad de negocio</div>
             """,
@@ -5923,7 +6226,7 @@ st.markdown(
             <div class="gestion-trazo completado"></div>
             <div class="gestion-paso activo"><span>2</span><b>2. Gestión</b></div>
             <div class="gestion-trazo"></div>
-            <div class="gestion-paso"><span>3</span><b>3. Presentación</b></div>
+            <div class="gestion-paso"><span>3</span><b>3. Análisis</b></div>
         </div>
     </div>
     <style>
@@ -6011,19 +6314,33 @@ if es_unidad_latam(unidad_negocio_seleccionada):
     )
 
 texto_indicaciones += (
-    "El botón <b>Resumen semana país</b> abre una página completa con la lectura ejecutiva del último corte; "
-    "el botón <b>Cambiar unidad</b> regresa a la selección inicial."
+    "El botón <b>Ir a Análisis</b> abre la tercera etapa, donde se muestra la lectura del último corte "
+    "y se genera el PowerPoint; el botón <b>Cambiar unidad</b> regresa a la selección inicial."
 )
 
 st.markdown(
-    f'''
-    <div class="comentario-amplio" style="width:100%; max-width:100%; margin: 0 0 16px 0;">
-        {texto_indicaciones}
-    </div>
-    ''',
-    unsafe_allow_html=True
+    """
+    <style>
+    .st-key-ayuda_tablero { margin:-6px 0 2px !important; }
+    .st-key-ayuda_tablero [data-testid="stHorizontalBlock"] { align-items:center !important; }
+    .st-key-ayuda_tablero [data-testid="stPopover"] > button {
+        width:38px !important; min-width:38px !important; height:38px !important;
+        min-height:38px !important; padding:0 !important; border-radius:50% !important;
+        font-size:19px !important; box-shadow:0 4px 12px rgba(8,37,103,.15) !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
 )
+ayuda_tablero = st.container(key="ayuda_tablero")
+with ayuda_tablero:
+    _, col_ayuda = st.columns([20, 1], gap="small")
+    with col_ayuda:
+        with st.popover("ⓘ", use_container_width=True):
+            st.markdown(texto_indicaciones, unsafe_allow_html=True)
 
+filtros_superiores_contenedor = st.container(key="filtros_superiores")
+filtros_superiores_contenedor.__enter__()
 st.markdown('<div class="top-filter-card"><div class="top-filter-title">Filtros</div>', unsafe_allow_html=True)
 
 
@@ -6156,7 +6473,7 @@ abrir_resumen_pais_click = False
 
 with col_resumen_pais:
     abrir_resumen_pais_click = st.button(
-        "Resumen semana país",
+        "Ir a Análisis",
         key="btn_abrir_resumen_pais",
         use_container_width=True
     )
@@ -6171,9 +6488,9 @@ with col_cambiar:
 
 
 st.markdown('</div>', unsafe_allow_html=True)
+filtros_superiores_contenedor.__exit__(None, None, None)
 
 secciones_gestion_validas = [
-    "resumen",
     "kpis",
     "evolucion",
     "coordinadoras",
@@ -6189,10 +6506,10 @@ if seccion_query:
         st.session_state["gestion_seccion_activa"] = seccion_query
 
 seccion_gestion_activa = str(
-    st.session_state.get("gestion_seccion_activa", "resumen")
+    st.session_state.get("gestion_seccion_activa", "kpis")
 )
 if seccion_gestion_activa not in secciones_gestion_validas:
-    seccion_gestion_activa = "resumen"
+    seccion_gestion_activa = "kpis"
     st.session_state["gestion_seccion_activa"] = seccion_gestion_activa
 
 if modulo_seleccionado == "Cartera":
@@ -6344,7 +6661,7 @@ if modulo_seleccionado == "Cartera":
 # ============================================================
 if globals().get("modulo_seleccionado") == "Cartera":
     miniatura_activa_limpia = str(
-        st.session_state.get("gestion_seccion_activa", "resumen")
+        st.session_state.get("gestion_seccion_activa", "kpis")
     ).replace("-", "_")
 
     st.markdown(
@@ -6682,6 +6999,8 @@ if obtener_query_param("vista") == "resumen_pais":
         comentario_resumen=comentario_general_pais,
         modo_moneda=modo_moneda,
         filtros_aplicados=filtros,
+        df_cartera=df_filtrado_original,
+        unidad=unidad_negocio_seleccionada or "",
         resumen_cobranza=resumen_cobranza_modal,
         semana_actual_cobranza=semana_actual_cob_modal,
         semana_anterior_cobranza=semana_anterior_cob_modal,
@@ -7006,27 +7325,11 @@ if MOSTRAR_CONTROL_DATOS:
 # VISTA SELECCIONADA
 # ============================================================
 if modulo_seleccionado == "Cartera":
-    slide_resumen = st.container(key="gestion_slide_resumen")
-    slide_resumen.__enter__()
-    # ============================================================
-    # RESUMEN CARTERA
-    # ============================================================
-    st.markdown(
-        '<div id="gestion-resumen" class="gestion-seccion-ancla"></div>'
-        '<div class="gestion-seccion-cabecera"><span>1</span>Resumen ejecutivo</div>',
-        unsafe_allow_html=True,
-    )
-    mostrar_boton_comentario(
-        "gestion_resumen_ejecutivo",
-        comentario_general_pais,
-    )
-
-    slide_resumen.__exit__(None, None, None)
     slide_kpis = st.container(key="gestion_slide_kpis")
     slide_kpis.__enter__()
     st.markdown(
         '<div id="gestion-kpis" class="gestion-seccion-ancla"></div>'
-        '<div class="gestion-seccion-cabecera"><span>2</span>KPIs de la última semana</div>',
+        '<div class="gestion-seccion-cabecera"><span>1</span>KPIs de la última semana</div>',
         unsafe_allow_html=True,
     )
     kpis_gestion = [
@@ -7068,7 +7371,7 @@ if modulo_seleccionado == "Cartera":
     comentario_pie = ""
     st.markdown(
         '<div id="gestion-evolucion" class="gestion-seccion-ancla"></div>'
-        '<div class="gestion-seccion-cabecera"><span>3</span>Evolución</div>',
+        '<div class="gestion-seccion-cabecera"><span>2</span>Evolución</div>',
         unsafe_allow_html=True,
     )
     col1 = st.container()
@@ -7233,7 +7536,7 @@ if modulo_seleccionado == "Cartera":
     slide_coordinadoras.__enter__()
     st.markdown(
         '<div id="gestion-coordinadoras" class="gestion-seccion-ancla"></div>'
-        '<div class="gestion-seccion-cabecera"><span>4</span>Tipo de coordinadora</div>',
+        '<div class="gestion-seccion-cabecera"><span>3</span>Tipo de coordinadora</div>',
         unsafe_allow_html=True,
     )
     with col2:
@@ -7336,7 +7639,7 @@ if modulo_seleccionado == "Cartera":
     slide_movimientos.__enter__()
     st.markdown(
         '<div id="gestion-movimientos" class="gestion-seccion-ancla"></div>'
-        '<div class="gestion-seccion-cabecera"><span>5</span>Movimientos de coordinadoras</div>',
+        '<div class="gestion-seccion-cabecera"><span>4</span>Movimientos de coordinadoras</div>',
         unsafe_allow_html=True,
     )
     st.subheader("Matriz de desplazamiento de coordinadoras por categoría")
@@ -7606,7 +7909,7 @@ if modulo_seleccionado == "Cartera":
     slide_top_bottom.__enter__()
     st.markdown(
         '<div id="gestion-top-bottom" class="gestion-seccion-ancla"></div>'
-        '<div class="gestion-seccion-cabecera"><span>6</span>Top / Bottom</div>',
+        '<div class="gestion-seccion-cabecera"><span>5</span>Top / Bottom</div>',
         unsafe_allow_html=True,
     )
     st.subheader("Top / Bottom por variable")
@@ -7782,7 +8085,7 @@ if modulo_seleccionado == "Cartera":
     slide_conclusiones.__enter__()
     st.markdown(
         '<div id="gestion-conclusiones" class="gestion-seccion-ancla"></div>'
-        '<div class="gestion-seccion-cabecera"><span>7</span>Conclusiones</div>',
+        '<div class="gestion-seccion-cabecera"><span>6</span>Conclusiones</div>',
         unsafe_allow_html=True,
     )
     mostrar_boton_comentario(
@@ -7792,14 +8095,6 @@ if modulo_seleccionado == "Cartera":
     slide_conclusiones.__exit__(None, None, None)
 
     miniaturas_gestion = [
-        (
-            "resumen",
-            "Resumen ejecutivo",
-            '<div class="mini-resumen">'
-            '<div class="mini-dona"></div>'
-            '<div class="mini-resumen-datos"><b>Resultado semanal</b><i></i><strong>Variación</strong><i></i></div>'
-            '</div>',
-        ),
         (
             "kpis",
             "KPIs",
@@ -8982,7 +9277,7 @@ if ruta_imagen_marca_agua is not None:
 # ============================================================
 if globals().get("modulo_seleccionado") == "Cartera":
     miniatura_activa = str(
-        st.session_state.get("gestion_seccion_activa", "resumen")
+        st.session_state.get("gestion_seccion_activa", "kpis")
     ).replace("-", "_")
 
     st.markdown(
@@ -9291,7 +9586,7 @@ if globals().get("modulo_seleccionado") == "Cartera":
 # adornos circulares y nunca crea un scroll interno.
 if globals().get("modulo_seleccionado") == "Cartera":
     seccion_final_ajustada = str(
-        st.session_state.get("gestion_seccion_activa", "resumen")
+        st.session_state.get("gestion_seccion_activa", "kpis")
     ).replace("-", "_")
     st.markdown(
         f"""
