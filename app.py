@@ -7251,7 +7251,13 @@ if modulo_seleccionado == "Cartera":
 
     # ============================================================
     # BURBUJAS: CLIENTES Y FALTAS POR SUCURSAL
+    # Se mantiene disponible sin alargar la diapositiva principal.
     # ============================================================
+    detalle_burbujas = st.expander(
+        "Ver análisis complementario de clientes y faltas por sucursal",
+        expanded=False,
+    )
+    detalle_burbujas.__enter__()
     st.subheader("Mapa de clientes y faltas por sucursal")
 
     nivel_burbujas = "Sucursal"
@@ -7318,6 +7324,8 @@ if modulo_seleccionado == "Cartera":
             mostrar_boton_comentario("burbujas_clientes_faltas", comentario_burbujas)
 
             st.caption("La gráfica queda fija por Sucursal. El tamaño de la burbuja representa el número de faltas; no se usa días de atraso ni escala de color.")
+
+    detalle_burbujas.__exit__(None, None, None)
 
 
     # ============================================================
@@ -7458,6 +7466,11 @@ if modulo_seleccionado == "Cartera":
     # ============================================================
     # TABLA POR NIVEL
     # ============================================================
+    detalle_top_bottom = st.expander(
+        f"Ver detalle agrupado por {nivel}",
+        expanded=False,
+    )
+    detalle_top_bottom.__enter__()
     st.subheader(f"Detalle agrupado por {nivel}")
 
     detalle = tabla_por_nivel(
@@ -7490,6 +7503,8 @@ if modulo_seleccionado == "Cartera":
         f"detalle_{nivel}_semana_{semana_actual}.xlsx",
         key="descargar_detalle_agrupado_xlsx"
     )
+
+    detalle_top_bottom.__exit__(None, None, None)
 
     slide_top_bottom.__exit__(None, None, None)
 
@@ -7524,7 +7539,7 @@ if modulo_seleccionado == "Cartera":
         ):
             with columnas_miniaturas[numero_miniatura - 1]:
                 if st.button(
-                    f"{numero_miniatura}. {titulo_miniatura}",
+                    titulo_miniatura,
                     key=f"gestion_mini_{slug_miniatura.replace('-', '_')}",
                     use_container_width=True,
                 ):
@@ -8631,4 +8646,317 @@ if ruta_imagen_marca_agua is not None:
         </style>
         """,
         unsafe_allow_html=True
+    )
+
+
+# ============================================================
+# MAQUETA FINAL DE GESTIÓN EN FORMATO PRESENTACIÓN
+# Esta regla va al final para que el carrusel no herede el estilo azul
+# global de los demás botones del tablero.
+# ============================================================
+if globals().get("modulo_seleccionado") == "Cartera":
+    miniatura_activa = str(
+        st.session_state.get("gestion_seccion_activa", "resumen")
+    ).replace("-", "_")
+
+    st.markdown(
+        f"""
+        <style>
+        /* La página nunca genera desplazamiento lateral; solamente la tira inferior. */
+        html, body, .stApp, [data-testid="stAppViewContainer"],
+        [data-testid="stAppViewContainer"] > .main {{
+            max-width:100% !important;
+            overflow-x:hidden !important;
+        }}
+
+        [data-testid="stAppViewContainer"] .main .block-container {{
+            width:100% !important;
+            max-width:100% !important;
+            padding-left:clamp(14px,2vw,30px) !important;
+            padding-right:clamp(14px,2vw,30px) !important;
+            padding-bottom:18px !important;
+            box-sizing:border-box !important;
+        }}
+
+        /* Una sola diapositiva grande, ajustada al ancho y sin scroll interno. */
+        [class*="st-key-gestion_slide_"] {{
+            display:none !important;
+        }}
+
+        .st-key-gestion_slide_{miniatura_activa} {{
+            display:block !important;
+            position:relative !important;
+            width:100% !important;
+            max-width:100% !important;
+            min-height:clamp(470px,58vh,650px) !important;
+            height:auto !important;
+            max-height:none !important;
+            overflow:visible !important;
+            box-sizing:border-box !important;
+            padding:clamp(18px,2.1vw,30px) clamp(16px,2.4vw,34px) 28px !important;
+            margin:8px 0 12px !important;
+            border:1px solid #d9e2ee !important;
+            border-radius:16px !important;
+            background:rgba(255,255,255,.985) !important;
+            box-shadow:0 12px 32px rgba(15,23,42,.11) !important;
+        }}
+
+        .st-key-gestion_slide_{miniatura_activa} > div,
+        .st-key-gestion_slide_{miniatura_activa} > div > div {{
+            position:relative;
+            z-index:1;
+        }}
+
+        .st-key-gestion_slide_{miniatura_activa} > div[data-testid="stVerticalBlock"] {{
+            gap:.65rem !important;
+        }}
+
+        .st-key-gestion_slide_{miniatura_activa} h1,
+        .st-key-gestion_slide_{miniatura_activa} h2,
+        .st-key-gestion_slide_{miniatura_activa} h3 {{
+            margin-top:.2rem !important;
+            margin-bottom:.35rem !important;
+        }}
+
+        .st-key-gestion_slide_{miniatura_activa} [data-testid="stPlotlyChart"],
+        .st-key-gestion_slide_{miniatura_activa} [data-testid="stPlotlyChart"] > div,
+        .st-key-gestion_slide_{miniatura_activa} .js-plotly-plot,
+        .st-key-gestion_slide_{miniatura_activa} .plot-container {{
+            width:100% !important;
+            max-width:100% !important;
+        }}
+
+        .st-key-gestion_slide_{miniatura_activa} [data-testid="stDataFrame"],
+        .st-key-gestion_slide_{miniatura_activa} [data-testid="stTable"] {{
+            width:100% !important;
+            max-width:100% !important;
+        }}
+
+        /* Franja de miniaturas: la única zona con desplazamiento horizontal. */
+        .st-key-gestion_carrusel {{
+            display:block !important;
+            width:100% !important;
+            max-width:100% !important;
+            overflow-x:auto !important;
+            overflow-y:hidden !important;
+            overscroll-behavior-inline:contain;
+            scrollbar-width:thin;
+            scrollbar-color:#8fa8c8 transparent;
+            padding:2px 1px 10px !important;
+            margin:0 !important;
+        }}
+
+        .st-key-gestion_carrusel::-webkit-scrollbar {{ height:8px; }}
+        .st-key-gestion_carrusel::-webkit-scrollbar-track {{ background:transparent; }}
+        .st-key-gestion_carrusel::-webkit-scrollbar-thumb {{
+            background:#8fa8c8; border-radius:999px;
+        }}
+
+        .st-key-gestion_carrusel > div,
+        .st-key-gestion_carrusel > div > div {{
+            width:max-content !important;
+            min-width:100% !important;
+            max-width:none !important;
+        }}
+
+        .st-key-gestion_carrusel [data-testid="stHorizontalBlock"] {{
+            display:flex !important;
+            flex-flow:row nowrap !important;
+            align-items:stretch !important;
+            width:max-content !important;
+            min-width:100% !important;
+            max-width:none !important;
+            gap:10px !important;
+        }}
+
+        .st-key-gestion_carrusel [data-testid="column"],
+        .st-key-gestion_carrusel [data-testid="stColumn"] {{
+            flex:0 0 clamp(154px,13.2vw,190px) !important;
+            width:clamp(154px,13.2vw,190px) !important;
+            min-width:154px !important;
+            max-width:190px !important;
+        }}
+
+        /* Miniaturas blancas con esquinas corporativas, no botones azules. */
+        .stApp .st-key-gestion_carrusel div.stButton > button,
+        .stApp .st-key-gestion_carrusel button,
+        .stApp [class*="st-key-gestion_mini_"] div.stButton > button,
+        .stApp [class*="st-key-gestion_mini_"] button {{
+            position:relative !important;
+            display:flex !important;
+            align-items:flex-start !important;
+            justify-content:flex-start !important;
+            width:100% !important;
+            min-width:0 !important;
+            height:108px !important;
+            min-height:108px !important;
+            max-height:108px !important;
+            padding:10px 10px 58px 11px !important;
+            overflow:hidden !important;
+            white-space:normal !important;
+            text-align:left !important;
+            line-height:1.1 !important;
+            color:#082567 !important;
+            -webkit-text-fill-color:#082567 !important;
+            border:2px solid #d9e2ee !important;
+            border-radius:11px !important;
+            background:
+                radial-gradient(circle at -8% -18%, transparent 0 45px, #f0cf2c 46px 57px, transparent 58px),
+                radial-gradient(circle at 110% 125%, transparent 0 51px, #082567 52px 70px, transparent 71px),
+                linear-gradient(145deg,#ffffff 0%,#f7faff 100%) !important;
+            box-shadow:0 4px 12px rgba(15,23,42,.08) !important;
+            opacity:1 !important;
+            visibility:visible !important;
+            transform:none !important;
+        }}
+
+        .stApp .st-key-gestion_carrusel div.stButton > button:hover,
+        .stApp .st-key-gestion_carrusel button:hover,
+        .stApp [class*="st-key-gestion_mini_"] div.stButton > button:hover,
+        .stApp [class*="st-key-gestion_mini_"] button:hover {{
+            color:#082567 !important;
+            -webkit-text-fill-color:#082567 !important;
+            border-color:#d5b91b !important;
+            background:
+                radial-gradient(circle at -8% -18%, transparent 0 45px, #f0cf2c 46px 57px, transparent 58px),
+                radial-gradient(circle at 110% 125%, transparent 0 51px, #082567 52px 70px, transparent 71px),
+                linear-gradient(145deg,#ffffff 0%,#fffdf1 100%) !important;
+            box-shadow:0 7px 18px rgba(15,23,42,.13) !important;
+            transform:translateY(-1px) !important;
+        }}
+
+        .stApp .st-key-gestion_carrusel button *,
+        .stApp [class*="st-key-gestion_mini_"] button *,
+        .stApp .st-key-gestion_carrusel button:hover *,
+        .stApp [class*="st-key-gestion_mini_"] button:hover * {{
+            color:#082567 !important;
+            -webkit-text-fill-color:#082567 !important;
+            font-size:11px !important;
+            font-weight:900 !important;
+            line-height:1.08 !important;
+            opacity:1 !important;
+            visibility:visible !important;
+        }}
+
+        .stApp [class*="st-key-gestion_mini_"] button::before {{
+            position:absolute;
+            left:8px;
+            bottom:7px;
+            z-index:4;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            width:24px;
+            height:24px;
+            border-radius:50%;
+            background:#082567;
+            color:#ffffff;
+            -webkit-text-fill-color:#ffffff;
+            font-size:12px;
+            font-weight:950;
+            box-shadow:0 2px 5px rgba(8,37,103,.22);
+        }}
+
+        .stApp [class*="st-key-gestion_mini_"] button::after {{
+            content:"";
+            position:absolute;
+            left:42px;
+            right:13px;
+            bottom:13px;
+            z-index:2;
+            height:34px;
+            border-radius:5px;
+            opacity:.92;
+        }}
+
+        .st-key-gestion_mini_resumen button::before {{ content:"1"; }}
+        .st-key-gestion_mini_kpis button::before {{ content:"2"; }}
+        .st-key-gestion_mini_evolucion button::before {{ content:"3"; }}
+        .st-key-gestion_mini_coordinadoras button::before {{ content:"4"; }}
+        .st-key-gestion_mini_movimientos button::before {{ content:"5"; }}
+        .st-key-gestion_mini_top_bottom button::before {{ content:"6"; }}
+        .st-key-gestion_mini_conclusiones button::before {{ content:"7"; }}
+
+        .st-key-gestion_mini_resumen button::after {{
+            left:56px !important; right:auto !important; bottom:10px !important;
+            width:40px; height:40px; border-radius:50% !important;
+            background:conic-gradient(#0b70c9 0 41%,#f49aa0 41% 63%,#76b7ea 63% 84%,#ff2d2d 84% 100%);
+            box-shadow:inset 0 0 0 10px #ffffff;
+        }}
+
+        .st-key-gestion_mini_kpis button::after,
+        .st-key-gestion_mini_coordinadoras button::after {{
+            background:
+                linear-gradient(to top,#0b70c9 0 74%,transparent 74%) 2% 100%/11% 100% no-repeat,
+                linear-gradient(to top,#f0cf2c 0 46%,transparent 46%) 22% 100%/11% 100% no-repeat,
+                linear-gradient(to top,#76b7ea 0 88%,transparent 88%) 42% 100%/11% 100% no-repeat,
+                linear-gradient(to top,#0b70c9 0 60%,transparent 60%) 62% 100%/11% 100% no-repeat,
+                linear-gradient(to top,#f0cf2c 0 80%,transparent 80%) 82% 100%/11% 100% no-repeat;
+            border-bottom:1px solid #b8c5d6;
+        }}
+
+        .st-key-gestion_mini_evolucion button::after {{
+            background:
+                linear-gradient(158deg,transparent 0 21%,#0b70c9 22% 25%,transparent 26% 43%,#0b70c9 44% 47%,transparent 48% 64%,#f0cf2c 65% 69%,transparent 70%),
+                repeating-linear-gradient(0deg,transparent 0 10px,rgba(148,163,184,.22) 10px 11px);
+        }}
+
+        .st-key-gestion_mini_movimientos button::after {{
+            background:
+                repeating-linear-gradient(0deg,rgba(255,255,255,.38) 0 7px,transparent 7px 9px),
+                repeating-linear-gradient(90deg,#d7e6f7 0 13px,#7ea9d8 13px 26px,#173b73 26px 39px);
+        }}
+
+        .st-key-gestion_mini_top_bottom button::after {{
+            background:
+                linear-gradient(90deg,#0b70c9 0 75%,transparent 75%) 0 1px/48% 6px no-repeat,
+                linear-gradient(90deg,#0b70c9 0 57%,transparent 57%) 0 13px/48% 6px no-repeat,
+                linear-gradient(90deg,#0b70c9 0 88%,transparent 88%) 0 25px/48% 6px no-repeat,
+                linear-gradient(90deg,#f0cf2c 0 83%,transparent 83%) 100% 1px/45% 6px no-repeat,
+                linear-gradient(90deg,#f0cf2c 0 61%,transparent 61%) 100% 13px/45% 6px no-repeat,
+                linear-gradient(90deg,#f0cf2c 0 72%,transparent 72%) 100% 25px/45% 6px no-repeat;
+        }}
+
+        .st-key-gestion_mini_conclusiones button::after {{
+            background:
+                radial-gradient(circle,#1d7f64 0 4px,transparent 5px) 0 2px/10px 10px no-repeat,
+                radial-gradient(circle,#0b70c9 0 4px,transparent 5px) 0 15px/10px 10px no-repeat,
+                radial-gradient(circle,#d9b600 0 4px,transparent 5px) 0 28px/10px 10px no-repeat,
+                linear-gradient(90deg,#94a3b8 0 82%,transparent 82%) 16px 4px/calc(100% - 16px) 4px no-repeat,
+                linear-gradient(90deg,#94a3b8 0 64%,transparent 64%) 16px 17px/calc(100% - 16px) 4px no-repeat,
+                linear-gradient(90deg,#94a3b8 0 74%,transparent 74%) 16px 30px/calc(100% - 16px) 4px no-repeat;
+        }}
+
+        .stApp .st-key-gestion_mini_{miniatura_activa} button {{
+            border-color:#0b70c9 !important;
+            box-shadow:0 0 0 2px rgba(11,112,201,.13),0 7px 18px rgba(15,23,42,.12) !important;
+        }}
+
+        @media (max-width:900px) {{
+            .st-key-gestion_slide_{miniatura_activa} {{
+                min-height:0 !important;
+                max-height:none !important;
+                overflow:visible !important;
+                padding:17px 13px 22px !important;
+            }}
+
+            .st-key-gestion_slide_{miniatura_activa} [data-testid="stHorizontalBlock"] {{
+                flex-wrap:wrap !important;
+            }}
+
+            .st-key-gestion_carrusel [data-testid="stHorizontalBlock"] {{
+                flex-wrap:nowrap !important;
+            }}
+
+            .st-key-gestion_carrusel [data-testid="column"],
+            .st-key-gestion_carrusel [data-testid="stColumn"] {{
+                flex:0 0 158px !important;
+                width:158px !important;
+                min-width:158px !important;
+                max-width:158px !important;
+            }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
     )
