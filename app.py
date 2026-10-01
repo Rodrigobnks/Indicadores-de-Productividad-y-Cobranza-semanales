@@ -5424,6 +5424,8 @@ if unidades_negocio:
                 "movimientos",
                 "top-bottom",
                 "conclusiones",
+                "cobranza-barras",
+                "cobranza-lineas",
             }:
                 seccion_desde_enlace = "kpis"
             st.session_state["unidad_negocio_app"] = unidad_desde_mapa
@@ -6299,10 +6301,10 @@ st.markdown(
 )
 
 texto_indicaciones = (
-    "Usa el filtro <b>Vista</b> para alternar entre <b>Cartera</b> y <b>Cobranza</b>. "
-    "En la vista <b>Cartera</b>, los filtros de <b>Marca</b> y <b>País</b> ajustan los KPIs, "
-    "tablas, movimientos y análisis de coordinadoras. En la vista <b>Cobranza</b>, esos mismos filtros "
-    "controlan la evolución histórica, el cumplimiento semanal y la comparación de cuota vs. pago. "
+    "El botón <b>Filtros</b> contiene Moneda, Marca, País y el alcance de coordinadoras. "
+    "Estos filtros ajustan los KPIs, tablas, movimientos, análisis de coordinadoras y las dos "
+    "diapositivas de Cobranza. La tarjeta <b>Cobranza · Barras</b> muestra el cumplimiento semanal "
+    "y <b>Cobranza · Líneas</b> compara cuota contra recuperación. "
 )
 
 if es_unidad_latam(unidad_negocio_seleccionada):
@@ -6341,7 +6343,16 @@ with ayuda_tablero:
 
 filtros_superiores_contenedor = st.container(key="filtros_superiores")
 filtros_superiores_contenedor.__enter__()
-st.markdown('<div class="top-filter-card"><div class="top-filter-title">Filtros</div>', unsafe_allow_html=True)
+st.markdown(
+    """
+    <style>
+    .st-key-filtros_superiores { margin:0 0 7px !important; }
+    .st-key-filtros_superiores [data-testid="stHorizontalBlock"] { align-items:center !important; }
+    .st-key-filtros_superiores [data-testid="stPopover"] > button { min-height:46px !important; }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 filtros = {}
@@ -6351,7 +6362,7 @@ if unidad_negocio_seleccionada is not None:
 
 base_para_filtros = filtrar_por_diccionario(df, filtros)
 
-col_unidad_actual, col_modulo, col_moneda, col_marca, col_pais, col_secundarias, col_resumen_pais, col_cambiar = st.columns([1.10, 0.90, 1.10, 0.95, 0.95, 1.15, 1.10, 0.85])
+col_unidad_actual, col_filtros_compactos, col_espacio_acciones, col_resumen_pais, col_cambiar = st.columns([1.10, 1.05, 5.15, 1.20, 0.95])
 
 with col_unidad_actual:
     if unidad_negocio_seleccionada is not None:
@@ -6362,13 +6373,11 @@ with col_unidad_actual:
     else:
         st.markdown('<div class="unidad-seleccionada-pill">Todas las unidades</div>', unsafe_allow_html=True)
 
-with col_modulo:
-    modulo_seleccionado = st.selectbox(
-        "Vista",
-        options=["Cartera", "Cobranza"],
-        index=0,
-        key="modulo_superior"
-    )
+modulo_seleccionado = "Cartera"
+with col_filtros_compactos:
+    filtros_popover = st.popover("⚙ Filtros", use_container_width=True)
+
+filtros_popover.__enter__()
 
 # Detecta el alcance de países antes de mostrar moneda.
 # Regla solicitada:
@@ -6395,19 +6404,18 @@ opciones_moneda = ["Moneda local"] if es_presico_mexico else ["Moneda local", "P
 if st.session_state.get("modo_moneda_superior") not in opciones_moneda:
     st.session_state["modo_moneda_superior"] = "Moneda local"
 
-with col_moneda:
-    modo_moneda = st.radio(
-        "Moneda",
-        options=opciones_moneda,
-        index=opciones_moneda.index(st.session_state.get("modo_moneda_superior", "Moneda local")),
-        horizontal=True,
-        key="modo_moneda_superior"
-    )
+modo_moneda = st.radio(
+    "Moneda",
+    options=opciones_moneda,
+    index=opciones_moneda.index(st.session_state.get("modo_moneda_superior", "Moneda local")),
+    horizontal=True,
+    key="modo_moneda_superior"
+)
 
 # Marca y País quedan como únicas opciones de filtro dentro del tablero.
 # En LATAM, si ya hay un país seleccionado, Marca se limita a las marcas disponibles de ese país.
 pais_seleccionado_estado = st.session_state.get("filtro_superior_País")
-for col_filtro, col_streamlit in [("Marca", col_marca), ("País", col_pais)]:
+for col_filtro in ["Marca", "País"]:
     if col_filtro in df.columns:
         df_opciones = filtrar_por_diccionario(base_para_filtros, filtros, excluir_col=col_filtro)
 
@@ -6441,28 +6449,24 @@ for col_filtro, col_streamlit in [("Marca", col_marca), ("País", col_pais)]:
                 st.session_state[f"filtro_superior_{col_filtro}"] = "Todos"
             index_default = opciones.index(st.session_state.get(f"filtro_superior_{col_filtro}", "Todos"))
 
-        with col_streamlit:
-            seleccion = st.selectbox(
-                col_filtro,
-                options=opciones,
-                index=index_default,
-                key=f"filtro_superior_{col_filtro}"
-            )
+        seleccion = st.selectbox(
+            col_filtro,
+            options=opciones,
+            index=index_default,
+            key=f"filtro_superior_{col_filtro}"
+        )
         if seleccion != "Todos" and seleccion != "Sin datos":
             filtros[col_filtro] = [seleccion]
     else:
-        with col_streamlit:
-            st.caption(f"Sin columna {col_filtro}")
+        st.caption(f"Sin columna {col_filtro}")
 
 # Filtro adicional de coordinadoras DESACTIVADO.
 # Antes permitía elegir "Sin secundarias" y eso reducía el total de coordinadoras.
 # Ahora siempre se conservan TODAS las coordinadoras para KPIs, tablas, gráficas y análisis.
 excluir_secundarias_cartera = False
-with col_secundarias:
-    if modulo_seleccionado == "Cartera" and "Tipo Coordinadora" in df.columns:
-        st.caption("Coordinadoras: Todas")
-    else:
-        st.caption("")
+if "Tipo Coordinadora" in df.columns:
+    st.caption("Coordinadoras: Todas")
+filtros_popover.__exit__(None, None, None)
 
 # IMPORTANTE:
 # El resumen se abre solo en el clic de este botón.
@@ -6487,7 +6491,6 @@ with col_cambiar:
             st.rerun()
 
 
-st.markdown('</div>', unsafe_allow_html=True)
 filtros_superiores_contenedor.__exit__(None, None, None)
 
 secciones_gestion_validas = [
@@ -6497,6 +6500,8 @@ secciones_gestion_validas = [
     "movimientos",
     "top-bottom",
     "conclusiones",
+    "cobranza-barras",
+    "cobranza-lineas",
 ]
 
 seccion_query = st.query_params.get("seccion")
@@ -6892,6 +6897,29 @@ if globals().get("modulo_seleccionado") == "Cartera":
         .mini-conclusiones i {{ display:block; height:5px; border-radius:2px; background:#94a3b8; width:92%; }}
         .mini-conclusiones span:nth-child(2) i {{ width:72%; }}
         .mini-conclusiones span:nth-child(3) i {{ width:82%; }}
+
+        .mini-cobranza-barras {{
+            position:absolute; left:40px; right:10px; top:38px; bottom:10px;
+            display:flex; align-items:flex-end; justify-content:space-around;
+            gap:4px; border-bottom:1px solid #b8c5d6;
+        }}
+        .mini-cobranza-barras i {{ display:block; width:8%; height:52%; background:#bfc7d3; }}
+        .mini-cobranza-barras i:nth-child(2) {{ height:74%; }}
+        .mini-cobranza-barras i:nth-child(3) {{ height:62%; }}
+        .mini-cobranza-barras i:nth-child(4) {{ height:88%; background:#0b70c9; }}
+        .mini-cobranza-barras i:nth-child(5) {{ height:69%; }}
+        .mini-cobranza-barras i:nth-child(6) {{ height:81%; background:#0b70c9; }}
+        .mini-cobranza-barras i:nth-child(7) {{ height:58%; }}
+        .mini-cobranza-barras i:nth-child(8) {{ height:93%; background:#e7c42d; }}
+
+        .mini-cobranza-lineas {{
+            position:absolute; left:40px; right:10px; top:38px; bottom:11px;
+            background:repeating-linear-gradient(0deg,transparent 0 14px,#e5eaf1 14px 15px);
+            border-bottom:1px solid #b8c5d6;
+        }}
+        .mini-cobranza-lineas svg {{ width:100%; height:100%; overflow:visible; }}
+        .mini-cobranza-lineas path {{ fill:none; stroke:#082567; stroke-width:3; }}
+        .mini-cobranza-lineas path.linea-pago {{ stroke:#e7c42d; stroke-width:2.5; }}
 
         @media (max-width:900px) {{
             [data-testid="stAppViewContainer"] .main .block-container {{
@@ -8094,6 +8122,186 @@ if modulo_seleccionado == "Cartera":
     )
     slide_conclusiones.__exit__(None, None, None)
 
+    # ============================================================
+    # COBRANZA COMO DOS DIAPOSITIVAS DEL CARRUSEL
+    # ============================================================
+    evol_cobranza_tarjetas = pd.DataFrame()
+    evol_cobranza_visual_tarjetas = pd.DataFrame()
+    col_cuota_tarjeta = None
+    col_pago_tarjeta = None
+    col_cump_tarjeta = None
+    col_mejor_tarjeta = None
+    col_peor_tarjeta = None
+    error_cobranza_tarjetas = ""
+
+    if df_cobranza is None:
+        error_cobranza_tarjetas = error_cobranza or "No se encontró información de Cobranza."
+    else:
+        (
+            df_cobranza_preparada_tarjetas,
+            col_cuota_tarjeta,
+            col_pago_tarjeta,
+            col_cump_tarjeta,
+            col_mejor_tarjeta,
+            col_peor_tarjeta,
+        ) = preparar_cobranza(df_cobranza)
+
+        if "Semana del año" not in df_cobranza_preparada_tarjetas.columns:
+            error_cobranza_tarjetas = "La base de Cobranza no contiene Semana o Semana del año."
+        elif col_cuota_tarjeta is None or col_pago_tarjeta is None:
+            error_cobranza_tarjetas = "No se detectaron las columnas de cuota y recuperación en Cobranza."
+        else:
+            df_cobranza_filtrada_tarjetas = aplicar_filtros_cobranza_desde_cartera(
+                df_cobranza_base=df_cobranza_preparada_tarjetas,
+                df_cartera_base=df,
+                filtros=filtros,
+            )
+            evol_cobranza_tarjetas = consolidar_cobranza(
+                df_cobranza=df_cobranza_filtrada_tarjetas,
+                col_cuota=col_cuota_tarjeta,
+                col_pago=col_pago_tarjeta,
+                col_cump=col_cump_tarjeta,
+                col_mejor=col_mejor_tarjeta,
+                col_peor=col_peor_tarjeta,
+                nivel=None,
+            )
+            evol_cobranza_visual_tarjetas = limitar_ultimas_semanas_cobranza(
+                evol_cobranza_tarjetas,
+                MAX_SEMANAS_VISUALES_COBRANZA,
+            )
+            if evol_cobranza_tarjetas.empty:
+                error_cobranza_tarjetas = "No hay datos de Cobranza con los filtros seleccionados."
+
+    slide_cobranza_barras = st.container(key="gestion_slide_cobranza_barras")
+    slide_cobranza_barras.__enter__()
+    st.markdown(
+        '<div id="gestion-cobranza-barras" class="gestion-seccion-ancla"></div>'
+        '<div class="gestion-seccion-cabecera"><span>7</span>Cobranza · Cumplimiento</div>',
+        unsafe_allow_html=True,
+    )
+    if error_cobranza_tarjetas:
+        st.info(error_cobranza_tarjetas)
+    else:
+        tabla_cobranza_barras = evol_cobranza_visual_tarjetas.copy()
+        if col_cump_tarjeta and col_cump_tarjeta in tabla_cobranza_barras.columns:
+            mejor_cumplimiento_tarjeta = pd.to_numeric(
+                tabla_cobranza_barras[col_cump_tarjeta], errors="coerce"
+            ).max()
+            tabla_cobranza_barras["Diferencia vs mejor semana"] = (
+                mejor_cumplimiento_tarjeta
+                - pd.to_numeric(tabla_cobranza_barras[col_cump_tarjeta], errors="coerce")
+            ).clip(lower=0)
+        columnas_barras = [
+            c for c in [
+                "Año",
+                "Semana del año",
+                "Etiqueta semana",
+                col_cump_tarjeta,
+                "Diferencia vs mejor semana",
+            ]
+            if c and c in tabla_cobranza_barras.columns
+        ]
+        tabla_cobranza_barras = tabla_cobranza_barras[columnas_barras].copy()
+
+        col_grafica_barras, col_tabla_barras = st.columns([3.15, 1.05], gap="medium")
+        with col_grafica_barras:
+            fig_cobranza_barras = grafica_cumplimiento(
+                evol_cobranza_visual_tarjetas,
+                col_cump_tarjeta,
+                modo_moneda,
+            )
+            fig_cobranza_barras.update_layout(
+                height=430,
+                margin=dict(l=35, r=20, t=48, b=45),
+                dragmode=False,
+            )
+            fig_cobranza_barras.update_xaxes(fixedrange=True)
+            fig_cobranza_barras.update_yaxes(fixedrange=True)
+            st.plotly_chart(
+                fig_cobranza_barras,
+                width="stretch",
+                config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True},
+                key="grafica_cobranza_barras_tarjeta",
+            )
+        with col_tabla_barras:
+            st.markdown("**Datos de la gráfica**")
+            st.dataframe(tabla_cobranza_barras, width="stretch", hide_index=True, height=320)
+            boton_descargar_xlsx(
+                tabla_cobranza_barras,
+                "Exportar Excel",
+                f"cobranza_cumplimiento_semana_{semana_actual}.xlsx",
+                key="exportar_excel_cobranza_barras",
+            )
+    slide_cobranza_barras.__exit__(None, None, None)
+
+    slide_cobranza_lineas = st.container(key="gestion_slide_cobranza_lineas")
+    slide_cobranza_lineas.__enter__()
+    st.markdown(
+        '<div id="gestion-cobranza-lineas" class="gestion-seccion-ancla"></div>'
+        '<div class="gestion-seccion-cabecera"><span>8</span>Cobranza · Cuota vs recuperación</div>',
+        unsafe_allow_html=True,
+    )
+    if error_cobranza_tarjetas:
+        st.info(error_cobranza_tarjetas)
+    else:
+        col_mejor_final_tarjeta = (
+            col_mejor_tarjeta
+            if col_mejor_tarjeta and col_mejor_tarjeta in evol_cobranza_visual_tarjetas.columns
+            else "Mejor semana"
+        )
+        col_peor_final_tarjeta = (
+            col_peor_tarjeta
+            if col_peor_tarjeta and col_peor_tarjeta in evol_cobranza_visual_tarjetas.columns
+            else "Peor semana"
+        )
+        columnas_lineas = [
+            c for c in [
+                "Año",
+                "Semana del año",
+                "Etiqueta semana",
+                col_cuota_tarjeta,
+                col_pago_tarjeta,
+                col_mejor_final_tarjeta,
+                col_peor_final_tarjeta,
+            ]
+            if c and c in evol_cobranza_visual_tarjetas.columns
+        ]
+        tabla_cobranza_lineas = evol_cobranza_visual_tarjetas[columnas_lineas].copy()
+
+        col_grafica_lineas, col_tabla_lineas = st.columns([3.15, 1.05], gap="medium")
+        with col_grafica_lineas:
+            fig_cobranza_lineas = grafica_cuota_pago(
+                evol=evol_cobranza_visual_tarjetas,
+                col_cuota=col_cuota_tarjeta,
+                col_pago=col_pago_tarjeta,
+                col_mejor=col_mejor_final_tarjeta,
+                col_peor=col_peor_final_tarjeta,
+                modo_moneda=modo_moneda,
+            )
+            fig_cobranza_lineas.update_layout(
+                height=430,
+                margin=dict(l=35, r=20, t=48, b=45),
+                dragmode=False,
+            )
+            fig_cobranza_lineas.update_xaxes(fixedrange=True)
+            fig_cobranza_lineas.update_yaxes(fixedrange=True)
+            st.plotly_chart(
+                fig_cobranza_lineas,
+                width="stretch",
+                config={"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "responsive": True},
+                key="grafica_cobranza_lineas_tarjeta",
+            )
+        with col_tabla_lineas:
+            st.markdown("**Datos de la gráfica**")
+            st.dataframe(tabla_cobranza_lineas, width="stretch", hide_index=True, height=320)
+            boton_descargar_xlsx(
+                tabla_cobranza_lineas,
+                "Exportar Excel",
+                f"cobranza_cuota_recuperacion_semana_{semana_actual}.xlsx",
+                key="exportar_excel_cobranza_lineas",
+            )
+    slide_cobranza_lineas.__exit__(None, None, None)
+
     miniaturas_gestion = [
         (
             "kpis",
@@ -8143,6 +8351,22 @@ if modulo_seleccionado == "Cartera":
             '<div class="mini-conclusiones">'
             '<span><b>✓</b><i></i></span><span><b>!</b><i></i></span><span><b>→</b><i></i></span>'
             '</div>',
+        ),
+        (
+            "cobranza-barras",
+            "Cobranza · Barras",
+            '<div class="mini-cobranza-barras">'
+            '<i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>'
+            '</div>',
+        ),
+        (
+            "cobranza-lineas",
+            "Cobranza · Líneas",
+            '<div class="mini-cobranza-lineas">'
+            '<svg viewBox="0 0 180 58" preserveAspectRatio="none" aria-hidden="true">'
+            '<path d="M2 46 L26 38 L49 43 L73 26 L98 31 L122 17 L148 22 L178 9" />'
+            '<path class="linea-pago" d="M2 54 L26 49 L49 38 L73 41 L98 35 L122 28 L148 31 L178 21" />'
+            '</svg></div>',
         ),
     ]
 
