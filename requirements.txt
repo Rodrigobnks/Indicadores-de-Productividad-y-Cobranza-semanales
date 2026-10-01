@@ -6,3 +6,4 @@ openpyxl
 pyxlsb
 pyarrow
 xlsxwriter
+streamlit-calendar==1.2.1
