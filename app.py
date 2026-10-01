@@ -3,7 +3,6 @@ import os
 import base64
 import html
 import re
-from datetime import date, timedelta
 from pathlib import Path
 from io import BytesIO
 
@@ -13,11 +12,6 @@ import streamlit as st
 import streamlit.components.v1 as components
 import plotly.express as px
 import plotly.graph_objects as go
-
-try:
-    from streamlit_calendar import calendar as calendario_interactivo
-except ImportError:
-    calendario_interactivo = None
 
 
 # ============================================================
@@ -5102,10 +5096,30 @@ if unidades_negocio:
         st.session_state["unidad_negocio_app"] = None
         unidad_guardada = None
 
+    # Las tarjetas de los mapas son enlaces a esta misma aplicación. El
+    # parámetro permite que toda la tarjeta sea clicable y abre directamente
+    # el tablero correspondiente, sin un botón intermedio.
+    unidad_query = st.query_params.get("unidad")
+    if unidad_query:
+        unidad_desde_mapa = next(
+            (
+                unidad
+                for unidad in unidades_negocio
+                if normalizar_texto_tc(unidad) == normalizar_texto_tc(unidad_query)
+            ),
+            None,
+        )
+        if unidad_desde_mapa is not None:
+            st.session_state["unidad_negocio_app"] = unidad_desde_mapa
+            st.session_state["modo_moneda_superior"] = "Moneda local"
+            st.session_state.pop("filtro_superior_País", None)
+            st.session_state.pop("filtro_superior_Marca", None)
+            st.query_params.clear()
+            st.rerun()
+
     if unidad_guardada is None:
         # La pantalla inicial funciona como el primer paso de la secuencia:
-        # alcance -> análisis -> presentación. Los filtros elegidos aquí se
-        # transfieren al tablero al pulsar "Ver resumen semanal".
+        # alcance -> análisis -> presentación.
         unidad_inicio = st.session_state.get("unidad_negocio_inicio")
         if unidad_inicio not in unidades_negocio:
             unidad_inicio = next(
@@ -5123,7 +5137,7 @@ if unidades_negocio:
             <div class="inicio-hero">
                 <div class="inicio-kicker">REPORTE EJECUTIVO SEMANAL</div>
                 <div class="inicio-title">Indicadores de Productividad y Cobranza</div>
-                <div class="inicio-subtitle">Selecciona el alcance del análisis y el periodo que deseas consultar.</div>
+                <div class="inicio-subtitle">Selecciona la unidad de negocio para abrir el tablero.</div>
             </div>
             <div class="inicio-stepper">
                 <div class="inicio-step activo"><span>1</span><b>Seleccionar alcance</b></div>
@@ -5152,7 +5166,7 @@ if unidades_negocio:
             unidad_key = normalizar_texto_tc(unidad_texto)
             nombre_logo = logos_unidad.get(unidad_key)
             nombre_mapa = mapas_unidad.get(unidad_key)
-            seleccionado = unidad_texto == unidad_inicio
+            unidad_parametro = unidad_key.replace(" ", "%20")
 
             mapa_html = (
                 imagen_logo_html(nombre_mapa, "mapa-silueta mapa-latam" if "LATAM" in unidad_key else "mapa-silueta mapa-mexico")
@@ -5170,34 +5184,190 @@ if unidades_negocio:
             with cols_unidades[idx % len(cols_unidades)]:
                 st.markdown(
                     f"""
-                    <div class="mapa-card {'seleccionada' if seleccionado else ''}">
-                        <div class="mapa-check">{'✓' if seleccionado else ''}</div>
-                        <div class="mapa-visual">
-                            {mapa_html}
-                            <div class="mapa-logo-contenedor">{logo_html}</div>
+                    <a class="mapa-card-link" href="?unidad={unidad_parametro}" target="_self">
+                        <div class="mapa-card">
+                            <div class="mapa-visual">
+                                {mapa_html}
+                                <div class="mapa-logo-contenedor">{logo_html}</div>
+                            </div>
+                            <div class="mapa-card-title">{html.escape(alcance)}</div>
+                            <div class="mapa-card-subtitle">{html.escape(detalle)}</div>
+                            <div class="mapa-card-accion">Abrir tablero →</div>
                         </div>
-                        <div class="mapa-card-title">{html.escape(alcance)}</div>
-                        <div class="mapa-card-subtitle">{html.escape(detalle)}</div>
+                    </a>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+        ruta_calendario_presico = CARPETA_APP / "CALENDARIO PRESICO.png"
+        @st.dialog("Calendario Présico 2026", width="large")
+        def mostrar_calendario_presico():
+            if ruta_calendario_presico.exists():
+                calendario_base64 = imagen_a_base64(str(ruta_calendario_presico))
+                st.markdown(
+                    f"""
+                    <div class="calendario-presico-viewport">
+                        <img
+                            class="calendario-presico-imagen"
+                            src="data:image/png;base64,{calendario_base64}"
+                            alt="Calendario Présico 2026"
+                        />
                     </div>
                     """,
                     unsafe_allow_html=True,
                 )
-                if st.button(
-                    "Seleccionado" if seleccionado else f"Seleccionar {alcance}",
-                    key=f"btn_unidad_inicio_{idx}",
-                    use_container_width=True,
-                    disabled=seleccionado,
-                ):
-                    st.session_state["unidad_negocio_inicio"] = unidad_texto
-                    for clave in [
-                        "inicio_pais",
-                        "inicio_marca",
-                        "inicio_moneda",
-                        "inicio_rango_semanas",
-                        "inicio_rango_fechas",
-                    ]:
-                        st.session_state.pop(clave, None)
-                    st.rerun()
+            else:
+                st.info(
+                    "Agrega CALENDARIO PRESICO.png en la misma carpeta de app.py para mostrar el calendario."
+                )
+
+        if st.button(
+            "📅 Calendario Présico · Cierres mensuales",
+            key="btn_calendario_presico",
+            use_container_width=True,
+        ):
+            mostrar_calendario_presico()
+
+        # Estilo autocontenido de la portada. Se inyecta antes de detener la
+        # ejecución porque el tablero se abre únicamente al pulsar un mapa.
+        ruta_landing_marca_agua = buscar_imagen_fondo(NOMBRE_IMAGEN_FONDO)
+        landing_background = ""
+        if ruta_landing_marca_agua is not None:
+            landing_fondo_base64 = imagen_a_base64(str(ruta_landing_marca_agua))
+            landing_background = f'''
+                background-image:
+                    linear-gradient(rgba(248,250,252,0.94), rgba(248,250,252,0.98)),
+                    url("data:image/png;base64,{landing_fondo_base64}") !important;
+            '''
+
+        st.markdown(
+            f"""
+            <style>
+            html, body, .stApp, [data-testid="stAppViewContainer"] {{
+                color-scheme: light !important;
+                background-color:#f8fafc !important;
+            }}
+            .stApp, [data-testid="stAppViewContainer"] {{
+                {landing_background}
+                background-size:cover !important;
+                background-position:top center !important;
+                background-repeat:no-repeat !important;
+                background-attachment:fixed !important;
+            }}
+            .main .block-container {{
+                max-width:1280px !important;
+                padding-top:1.25rem !important;
+                padding-bottom:1.25rem !important;
+                background:transparent !important;
+                border:0 !important;
+                box-shadow:none !important;
+            }}
+            .inicio-hero {{ text-align:center; padding:2px 12px 8px; }}
+            .inicio-kicker {{
+                color:#d48a24; font-size:12px; font-weight:900;
+                letter-spacing:2.2px; margin-bottom:5px;
+            }}
+            .inicio-title {{
+                color:#082567; font-size:36px; line-height:1.06;
+                font-weight:950; letter-spacing:-.8px;
+            }}
+            .inicio-subtitle {{
+                color:#475569; font-size:15px; font-weight:600; margin-top:7px;
+            }}
+            .inicio-stepper {{
+                display:flex; align-items:center; justify-content:center;
+                max-width:760px; margin:10px auto 16px;
+            }}
+            .inicio-step {{
+                min-width:145px; display:flex; flex-direction:column;
+                align-items:center; gap:4px; color:#94a3b8; font-size:11px;
+            }}
+            .inicio-step span {{
+                width:29px; height:29px; border-radius:50%; display:flex;
+                align-items:center; justify-content:center; background:#e2e8f0;
+                color:#64748b; font-weight:900;
+            }}
+            .inicio-step.activo {{ color:#082567; }}
+            .inicio-step.activo span {{ background:#082567; color:#ffffff; }}
+            .inicio-linea {{ height:3px; background:#dbe3ee; flex:1; margin-bottom:18px; }}
+            .inicio-section-title {{
+                color:#082567; font-size:18px; font-weight:900; margin:0 0 8px;
+            }}
+            .mapa-card-link {{ text-decoration:none !important; color:inherit !important; }}
+            .mapa-card {{
+                position:relative; background:rgba(255,255,255,.98);
+                border:2px solid #e2e8f0; border-radius:22px;
+                padding:8px 18px 13px; min-height:245px; text-align:center;
+                box-shadow:0 10px 26px rgba(15,23,42,.08);
+                transition:transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+                cursor:pointer;
+            }}
+            .mapa-card:hover {{
+                transform:translateY(-4px); border-color:#d99932;
+                box-shadow:0 16px 34px rgba(8,37,103,.16);
+            }}
+            .mapa-visual {{
+                position:relative; height:160px; display:flex;
+                align-items:center; justify-content:center; overflow:hidden;
+            }}
+            .mapa-silueta {{
+                width:100%; height:100%; object-fit:contain; display:block;
+                filter:drop-shadow(0 8px 9px rgba(15,23,42,.12));
+            }}
+            .mapa-latam {{ transform:scale(.91); }}
+            .mapa-logo-contenedor {{
+                position:absolute; inset:0; display:flex; align-items:center;
+                justify-content:center; pointer-events:none;
+            }}
+            .mapa-logo-overlay {{
+                width:142px; height:66px; object-fit:contain; display:block;
+                background:rgba(255,255,255,.91); border-radius:13px;
+                padding:6px 10px; box-shadow:0 5px 15px rgba(15,23,42,.14);
+            }}
+            .mapa-logo-latam {{ width:134px; height:72px; }}
+            .mapa-logo-contenedor .unidad-logo-placeholder {{
+                width:110px; height:64px; margin:0; border-radius:13px;
+                background:rgba(255,255,255,.92); font-size:34px;
+            }}
+            .mapa-card-title {{ color:#082567; font-size:20px; font-weight:950; }}
+            .mapa-card-subtitle {{ color:#64748b; font-size:13px; font-weight:650; margin-top:1px; }}
+            .mapa-card-accion {{ color:#b56f1f; font-size:12px; font-weight:900; margin-top:5px; }}
+            .st-key-btn_calendario_presico button {{
+                justify-content:flex-start !important; text-align:left !important;
+                background:rgba(255,255,255,.97) !important; color:#082567 !important;
+                border:1px solid #dbe3ee !important; border-radius:14px !important;
+                min-height:48px !important; padding:0 18px !important;
+                font-size:17px !important; font-weight:900 !important;
+                box-shadow:0 7px 20px rgba(15,23,42,.06) !important;
+            }}
+            .st-key-btn_calendario_presico button:hover {{
+                border-color:#d99932 !important; color:#082567 !important;
+            }}
+            .calendario-presico-viewport {{
+                width:100%; height:min(70vh, 720px); min-height:340px;
+                display:flex; align-items:center; justify-content:center;
+                overflow:hidden; background:#ffffff;
+            }}
+            .calendario-presico-imagen {{
+                display:block; width:100%; height:100%; max-width:100%;
+                max-height:100%; object-fit:contain;
+            }}
+            @media (max-width:800px) {{
+                .inicio-title {{ font-size:27px; }}
+                .inicio-step b {{ display:none; }}
+                .inicio-step {{ min-width:40px; }}
+                .inicio-linea {{ margin-bottom:0; }}
+                .mapa-card {{ min-height:220px; }}
+                .mapa-visual {{ height:140px; }}
+                .calendario-presico-viewport {{ height:auto; min-height:0; }}
+                .calendario-presico-imagen {{ height:auto; }}
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        st.stop()
 
         df_inicio = df[
             df["Unidad de Negocio"].astype(str).str.strip() == str(unidad_inicio).strip()
