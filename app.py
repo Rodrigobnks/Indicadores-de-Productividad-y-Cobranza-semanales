@@ -6352,7 +6352,7 @@ st.markdown(
 abrir_resumen_pais_click = False
 ayuda_tablero = st.container(key="ayuda_tablero")
 with ayuda_tablero:
-    col_ayuda, col_resumen_pais, col_cambiar = st.columns([.42, 1.55, 1.25], gap="small")
+    col_ayuda, col_resumen_pais, col_cambiar = st.columns([.36, 1.35, 1.18], gap="small")
     with col_ayuda:
         filtros_popover = st.popover("ⓘ", use_container_width=True)
     with col_resumen_pais:
@@ -9816,3 +9816,117 @@ if globals().get("modulo_seleccionado") == "Cartera":
         """,
         unsafe_allow_html=True,
     )
+
+
+# ============================================================
+# ENCABEZADO COMPACTO: CONTROLES DENTRO DE LA MISMA TARJETA
+# ============================================================
+st.markdown(
+    """
+    <style>
+    .gestion-encabezado {
+        min-height:84px !important;
+        margin-bottom:10px !important;
+        box-sizing:border-box !important;
+    }
+
+    @media (min-width:1101px) {
+        .st-key-ayuda_tablero {
+            position:relative !important;
+            z-index:40 !important;
+            width:clamp(475px,33vw,600px) !important;
+            max-width:600px !important;
+            height:0 !important;
+            min-height:0 !important;
+            overflow:visible !important;
+            margin:0 0 0 clamp(275px,23vw,430px) !important;
+            padding:0 !important;
+            transform:translateY(-68px) !important;
+        }
+        .st-key-ayuda_tablero > div,
+        .st-key-ayuda_tablero > div > div {
+            overflow:visible !important;
+        }
+    }
+
+    .st-key-ayuda_tablero [data-testid="stHorizontalBlock"] {
+        gap:9px !important;
+        align-items:center !important;
+    }
+
+    .stApp .st-key-ayuda_tablero [data-testid="stPopover"] > button {
+        width:40px !important;
+        min-width:40px !important;
+        height:40px !important;
+        min-height:40px !important;
+        padding:0 !important;
+        border-radius:50% !important;
+        background:#eef5fd !important;
+        color:#082567 !important;
+        -webkit-text-fill-color:#082567 !important;
+        border:1px solid #bfd3eb !important;
+        box-shadow:none !important;
+    }
+    .stApp .st-key-ayuda_tablero [data-testid="stPopover"] > button * {
+        color:#082567 !important;
+        -webkit-text-fill-color:#082567 !important;
+    }
+
+    .stApp .st-key-btn_abrir_resumen_pais button {
+        height:40px !important;
+        min-height:40px !important;
+        padding:0 18px !important;
+        border-radius:10px !important;
+        background:#082567 !important;
+        color:#ffffff !important;
+        -webkit-text-fill-color:#ffffff !important;
+        border:1px solid #082567 !important;
+        box-shadow:0 4px 10px rgba(8,37,103,.16) !important;
+        font-size:12px !important;
+    }
+    .stApp .st-key-btn_abrir_resumen_pais button * {
+        color:#ffffff !important;
+        -webkit-text-fill-color:#ffffff !important;
+        font-size:12px !important;
+    }
+
+    .stApp .st-key-btn_cambiar_unidad button {
+        height:40px !important;
+        min-height:40px !important;
+        padding:0 16px !important;
+        border-radius:10px !important;
+        background:#ffffff !important;
+        color:#082567 !important;
+        -webkit-text-fill-color:#082567 !important;
+        border:1px solid #9db7d8 !important;
+        box-shadow:none !important;
+        font-size:12px !important;
+    }
+    .stApp .st-key-btn_cambiar_unidad button * {
+        color:#082567 !important;
+        -webkit-text-fill-color:#082567 !important;
+        font-size:12px !important;
+    }
+    .stApp .st-key-btn_cambiar_unidad button:hover {
+        background:#eef5fd !important;
+        border-color:#0b70c9 !important;
+    }
+
+    [class*="st-key-gestion_slide_"] {
+        margin-top:0 !important;
+    }
+
+    @media (max-width:1100px) {
+        .st-key-ayuda_tablero {
+            width:100% !important;
+            max-width:100% !important;
+            height:auto !important;
+            min-height:0 !important;
+            margin:0 0 8px !important;
+            transform:none !important;
+        }
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
