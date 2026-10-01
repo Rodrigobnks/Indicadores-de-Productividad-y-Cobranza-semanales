@@ -5892,6 +5892,94 @@ else:
 def es_unidad_latam(valor) -> bool:
     return "LATAM" in normalizar_texto_tc(valor)
 
+
+st.markdown(
+    f"""
+    <div class="gestion-encabezado">
+        <div class="gestion-marca">
+            <span class="gestion-icono"><i></i><i></i><i></i></span>
+            <div>
+                <div class="gestion-titulo">Gestión</div>
+                <div class="gestion-unidad">{html.escape(str(unidad_negocio_seleccionada or 'Todas las unidades'))}</div>
+            </div>
+        </div>
+        <div class="gestion-progreso">
+            <div class="gestion-paso completado"><span>✓</span><b>1. Seleccionar unidad</b></div>
+            <div class="gestion-trazo completado"></div>
+            <div class="gestion-paso activo"><span>2</span><b>2. Gestión</b></div>
+            <div class="gestion-trazo"></div>
+            <div class="gestion-paso"><span>3</span><b>3. Presentación</b></div>
+        </div>
+    </div>
+    <style>
+    .gestion-encabezado {{
+        display:flex; align-items:center; justify-content:space-between; gap:24px;
+        background:rgba(255,255,255,.97); border:1px solid #dbe3ee;
+        border-radius:16px; padding:14px 20px; margin:0 0 14px;
+        box-shadow:0 8px 24px rgba(15,23,42,.07);
+    }}
+    .gestion-marca {{ display:flex; align-items:center; gap:12px; min-width:220px; }}
+    .gestion-icono {{ height:34px; display:flex; align-items:flex-end; gap:4px; }}
+    .gestion-icono i {{ width:7px; display:block; border-radius:2px 2px 0 0; }}
+    .gestion-icono i:nth-child(1) {{ height:13px; background:#082567; }}
+    .gestion-icono i:nth-child(2) {{ height:23px; background:#d99932; }}
+    .gestion-icono i:nth-child(3) {{ height:31px; background:#f2cf29; }}
+    .gestion-titulo {{ color:#082567; font-size:24px; font-weight:950; line-height:1; }}
+    .gestion-unidad {{ color:#64748b; font-size:12px; font-weight:750; margin-top:4px; }}
+    .gestion-progreso {{ display:flex; align-items:center; flex:1; justify-content:flex-end; max-width:760px; }}
+    .gestion-paso {{
+        display:flex; align-items:center; gap:8px; white-space:nowrap;
+        color:#94a3b8; font-size:13px;
+    }}
+    .gestion-paso span {{
+        width:30px; height:30px; display:flex; align-items:center; justify-content:center;
+        border-radius:50%; background:#e2e8f0; color:#64748b; font-weight:950;
+    }}
+    .gestion-paso.completado {{ color:#36548c; }}
+    .gestion-paso.completado span {{ background:#d9e9fb; color:#082567; }}
+    .gestion-paso.activo {{ color:#082567; }}
+    .gestion-paso.activo span {{ background:#e7c42d; color:#ffffff; }}
+    .gestion-trazo {{ height:2px; width:48px; background:#cbd5e1; margin:0 12px; }}
+    .gestion-trazo.completado {{ background:#a9c8ed; }}
+    .gestion-nav {{
+        display:grid; grid-template-columns:repeat(7, minmax(125px,1fr)); gap:8px;
+        margin:12px 0 18px; overflow-x:auto; padding-bottom:3px;
+    }}
+    .gestion-nav a {{
+        display:flex; align-items:center; justify-content:center; gap:7px;
+        min-height:46px; padding:7px 10px; border-radius:12px;
+        background:#eef5fd; border:1px solid #d7e6f7; color:#082567 !important;
+        text-decoration:none !important; font-size:12px; font-weight:850;
+        text-align:center; transition:.15s ease;
+    }}
+    .gestion-nav a:hover {{ background:#082567; color:#ffffff !important; transform:translateY(-2px); }}
+    .gestion-nav-numero {{
+        width:22px; height:22px; border-radius:50%; background:#ffffff;
+        display:inline-flex; align-items:center; justify-content:center;
+        color:#082567; font-weight:950; flex:0 0 auto;
+    }}
+    .gestion-seccion-ancla {{ scroll-margin-top:20px; }}
+    .gestion-seccion-cabecera {{
+        display:flex; align-items:center; gap:10px; margin:22px 0 10px;
+        padding:11px 14px; background:linear-gradient(90deg,#eef5fd 0%,rgba(255,255,255,.45) 100%);
+        border-left:5px solid #d99932; border-radius:0 12px 12px 0;
+        color:#082567; font-size:20px; font-weight:950;
+    }}
+    .gestion-seccion-cabecera span {{
+        width:29px; height:29px; display:flex; align-items:center; justify-content:center;
+        border-radius:50%; background:#082567; color:#ffffff; font-size:13px;
+    }}
+    @media (max-width:900px) {{
+        .gestion-encabezado {{ align-items:flex-start; flex-direction:column; }}
+        .gestion-progreso {{ width:100%; justify-content:flex-start; overflow-x:auto; }}
+        .gestion-paso b {{ font-size:11px; }}
+        .gestion-nav {{ grid-template-columns:repeat(7, 135px); }}
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 texto_indicaciones = (
     "Usa el filtro <b>Vista</b> para alternar entre <b>Cartera</b> y <b>Cobranza</b>. "
     "En la vista <b>Cartera</b>, los filtros de <b>Marca</b> y <b>País</b> ajustan los KPIs, "
@@ -6067,6 +6155,22 @@ with col_cambiar:
 
 
 st.markdown('</div>', unsafe_allow_html=True)
+
+if modulo_seleccionado == "Cartera":
+    st.markdown(
+        """
+        <div class="gestion-nav">
+            <a href="#gestion-resumen"><span class="gestion-nav-numero">1</span>Resumen</a>
+            <a href="#gestion-kpis"><span class="gestion-nav-numero">2</span>KPIs</a>
+            <a href="#gestion-evolucion"><span class="gestion-nav-numero">3</span>Evolución</a>
+            <a href="#gestion-coordinadoras"><span class="gestion-nav-numero">4</span>Coordinadoras</a>
+            <a href="#gestion-movimientos"><span class="gestion-nav-numero">5</span>Movimientos</a>
+            <a href="#gestion-top-bottom"><span class="gestion-nav-numero">6</span>Top / Bottom</a>
+            <a href="#gestion-conclusiones"><span class="gestion-nav-numero">7</span>Conclusiones</a>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 # Aplica conversión de moneda después de construir los filtros, para conservar las opciones originales.
 df = aplicar_tipo_cambio_mxn(df, modo_moneda)
@@ -6489,16 +6593,61 @@ if modulo_seleccionado == "Cartera":
     # ============================================================
     # RESUMEN CARTERA
     # ============================================================
-    # Oculto por solicitud: el resumen ejecutivo general ya no se muestra
-    # directamente en la página. Solo aparece al presionar el botón
-    # "Resumen semana país" de la barra superior.
+    st.markdown(
+        '<div id="gestion-resumen" class="gestion-seccion-ancla"></div>'
+        '<div class="gestion-seccion-cabecera"><span>1</span>Resumen ejecutivo</div>',
+        unsafe_allow_html=True,
+    )
+    mostrar_boton_comentario(
+        "gestion_resumen_ejecutivo",
+        comentario_general_pais,
+    )
+
+    st.markdown(
+        '<div id="gestion-kpis" class="gestion-seccion-ancla"></div>'
+        '<div class="gestion-seccion-cabecera"><span>2</span>KPIs de la última semana</div>',
+        unsafe_allow_html=True,
+    )
+    kpis_gestion = [
+        indicador
+        for indicador in [
+            "Clientes Totales",
+            "Clientes al corriente",
+            "Cartera Total",
+            "Saldo en atraso",
+        ]
+        if indicador in resumen_general_pais["Indicador"].astype(str).tolist()
+    ] if resumen_general_pais is not None and not resumen_general_pais.empty else []
+
+    if kpis_gestion:
+        columnas_kpis_gestion = st.columns(len(kpis_gestion))
+        for indice_kpi, indicador_kpi in enumerate(kpis_gestion):
+            fila_kpi = resumen_general_pais[
+                resumen_general_pais["Indicador"] == indicador_kpi
+            ].iloc[0]
+            with columnas_kpis_gestion[indice_kpi]:
+                tarjeta_kpi(
+                    indicador_kpi,
+                    fila_kpi.get(f"Dato sem {semana_actual}", 0),
+                    fila_kpi.get("Variación vs sem ant", np.nan)
+                    if semana_anterior_general_pais is not None
+                    else None,
+                )
+    else:
+        st.info("No hay indicadores disponibles para mostrar KPIs con los filtros actuales.")
 
     # ============================================================
     # GRÁFICAS CARTERA
     # ============================================================
     comentario_evolucion = ""
     comentario_pie = ""
-    col1, col2 = st.columns([1.15, 0.85])
+    st.markdown(
+        '<div id="gestion-evolucion" class="gestion-seccion-ancla"></div>'
+        '<div class="gestion-seccion-cabecera"><span>3</span>Evolución</div>',
+        unsafe_allow_html=True,
+    )
+    col1 = st.container()
+    col2 = st.container()
 
     with col1:
         st.subheader("Evolución semanal")
@@ -6653,6 +6802,11 @@ if modulo_seleccionado == "Cartera":
             st.info("No hay indicadores disponibles para la gráfica de evolución semanal.")
 
 
+    st.markdown(
+        '<div id="gestion-coordinadoras" class="gestion-seccion-ancla"></div>'
+        '<div class="gestion-seccion-cabecera"><span>4</span>Tipo de coordinadora</div>',
+        unsafe_allow_html=True,
+    )
     with col2:
         st.subheader(f"Distribución por tipo de coordinadora | Última semana: {semana_ultima_historial}")
 
@@ -6749,6 +6903,11 @@ if modulo_seleccionado == "Cartera":
     # ============================================================
     # MATRIZ DE DESPLAZAMIENTO DE COORDINADORAS
     # ============================================================
+    st.markdown(
+        '<div id="gestion-movimientos" class="gestion-seccion-ancla"></div>'
+        '<div class="gestion-seccion-cabecera"><span>5</span>Movimientos de coordinadoras</div>',
+        unsafe_allow_html=True,
+    )
     st.subheader("Matriz de desplazamiento de coordinadoras por categoría")
 
     if "coordinadora_id" not in df_filtrado_original.columns:
@@ -7003,6 +7162,11 @@ if modulo_seleccionado == "Cartera":
     # ============================================================
     # TOP / BOTTOM POR VARIABLE
     # ============================================================
+    st.markdown(
+        '<div id="gestion-top-bottom" class="gestion-seccion-ancla"></div>'
+        '<div class="gestion-seccion-cabecera"><span>6</span>Top / Bottom</div>',
+        unsafe_allow_html=True,
+    )
     st.subheader("Top / Bottom por variable")
     comentario_top_bottom = ""
 
@@ -7115,6 +7279,26 @@ if modulo_seleccionado == "Cartera":
                 )
 
     mostrar_boton_comentario("top_bottom", comentario_top_bottom)
+
+    st.markdown(
+        '<div id="gestion-conclusiones" class="gestion-seccion-ancla"></div>'
+        '<div class="gestion-seccion-cabecera"><span>7</span>Conclusiones</div>',
+        unsafe_allow_html=True,
+    )
+    conclusiones_gestion = [
+        texto
+        for texto in [
+            comentario_general_pais,
+            comentario_evolucion,
+            comentario_pie,
+            comentario_top_bottom,
+        ]
+        if texto is not None and str(texto).strip()
+    ]
+    mostrar_boton_comentario(
+        "gestion_conclusiones_dinamicas",
+        " ".join(dict.fromkeys(conclusiones_gestion)),
+    )
 
     # ============================================================
     # TABLA POR NIVEL
