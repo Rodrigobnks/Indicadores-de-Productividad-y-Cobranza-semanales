@@ -5101,6 +5101,7 @@ if unidades_negocio:
     # el tablero correspondiente, sin un botón intermedio.
     unidad_query = st.query_params.get("unidad")
     if unidad_query:
+        seccion_query = st.query_params.get("seccion")
         unidad_desde_mapa = next(
             (
                 unidad
@@ -5115,6 +5116,8 @@ if unidades_negocio:
             st.session_state.pop("filtro_superior_País", None)
             st.session_state.pop("filtro_superior_Marca", None)
             st.query_params.clear()
+            if seccion_query:
+                st.query_params["seccion"] = str(seccion_query)
             st.rerun()
 
     if unidad_guardada is None:
@@ -6151,23 +6154,114 @@ with col_cambiar:
     if unidad_negocio_seleccionada is not None:
         if st.button("Cambiar unidad", key="btn_cambiar_unidad", use_container_width=True):
             st.session_state.pop("unidad_negocio_app", None)
+            st.query_params.clear()
             st.rerun()
 
 
 st.markdown('</div>', unsafe_allow_html=True)
 
+secciones_gestion_validas = [
+    "resumen",
+    "kpis",
+    "evolucion",
+    "coordinadoras",
+    "movimientos",
+    "top-bottom",
+    "conclusiones",
+]
+seccion_gestion_activa = str(st.query_params.get("seccion", "resumen"))
+if seccion_gestion_activa not in secciones_gestion_validas:
+    seccion_gestion_activa = "resumen"
+
 if modulo_seleccionado == "Cartera":
     st.markdown(
-        """
-        <div class="gestion-nav">
-            <a href="#gestion-resumen"><span class="gestion-nav-numero">1</span>Resumen</a>
-            <a href="#gestion-kpis"><span class="gestion-nav-numero">2</span>KPIs</a>
-            <a href="#gestion-evolucion"><span class="gestion-nav-numero">3</span>Evolución</a>
-            <a href="#gestion-coordinadoras"><span class="gestion-nav-numero">4</span>Coordinadoras</a>
-            <a href="#gestion-movimientos"><span class="gestion-nav-numero">5</span>Movimientos</a>
-            <a href="#gestion-top-bottom"><span class="gestion-nav-numero">6</span>Top / Bottom</a>
-            <a href="#gestion-conclusiones"><span class="gestion-nav-numero">7</span>Conclusiones</a>
-        </div>
+        f"""
+        <style>
+        [class*="st-key-gestion_slide_"] {{ display:none !important; }}
+        .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} {{
+            display:block !important;
+            position:relative;
+            min-height:52vh;
+            max-height:64vh;
+            overflow-y:auto;
+            overflow-x:hidden;
+            background:rgba(255,255,255,.98);
+            border:1px solid #dbe3ee;
+            border-radius:17px;
+            padding:24px 28px 28px;
+            box-shadow:0 12px 34px rgba(15,23,42,.10);
+        }}
+        .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')}::before {{
+            content:""; position:absolute; left:-55px; top:-75px;
+            width:230px; height:125px; border-radius:50%;
+            border:18px solid #f0cf2c; border-right-color:transparent;
+            border-bottom-color:transparent; transform:rotate(-10deg);
+            pointer-events:none; opacity:.92;
+        }}
+        .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')}::after {{
+            content:""; position:absolute; right:-70px; bottom:-92px;
+            width:260px; height:150px; border-radius:50%;
+            border:22px solid #082567; border-left-color:transparent;
+            border-top-color:transparent; transform:rotate(-8deg);
+            pointer-events:none; opacity:.96;
+        }}
+        .gestion-miniaturas {{
+            display:grid; grid-template-columns:repeat(7,minmax(145px,1fr)); gap:10px;
+            margin:12px 0 4px; overflow-x:auto; padding:2px 2px 8px;
+        }}
+        .gestion-miniatura {{
+            position:relative; min-height:92px; border:2px solid #dbe3ee;
+            border-radius:12px; background:linear-gradient(145deg,#ffffff 0%,#eef5fd 100%);
+            padding:12px 10px 10px 42px; color:#082567 !important;
+            text-decoration:none !important; box-shadow:0 5px 14px rgba(15,23,42,.07);
+            overflow:hidden; transition:.15s ease;
+        }}
+        .gestion-miniatura:hover {{ transform:translateY(-3px); border-color:#d99932; }}
+        .gestion-miniatura.activa {{ border-color:#0b70c9; box-shadow:0 0 0 2px rgba(11,112,201,.13); }}
+        .gestion-miniatura-numero {{
+            position:absolute; left:9px; bottom:9px; width:25px; height:25px;
+            border-radius:50%; display:flex; align-items:center; justify-content:center;
+            background:#082567; color:#ffffff; font-size:12px; font-weight:950;
+        }}
+        .gestion-miniatura-titulo {{ font-size:12px; font-weight:950; line-height:1.15; }}
+        .gestion-miniatura-preview {{
+            height:38px; margin-top:8px; border-radius:6px;
+            background:
+                linear-gradient(90deg,transparent 0 8%,#76b7ea 8% 16%,transparent 16% 24%,#f0cf2c 24% 37%,transparent 37% 45%,#082567 45% 58%,transparent 58% 66%,#f49aa0 66% 78%,transparent 78%);
+            opacity:.70;
+        }}
+        .gestion-miniatura:nth-child(1) .gestion-miniatura-preview {{
+            width:38px; border-radius:50%;
+            background:conic-gradient(#0b70c9 0 40%,#f49aa0 40% 62%,#76b7ea 62% 84%,#ff2d2d 84% 100%);
+            box-shadow:inset 0 0 0 10px #ffffff;
+        }}
+        .gestion-miniatura:nth-child(3) .gestion-miniatura-preview {{
+            background:linear-gradient(165deg,transparent 0 42%,#0b70c9 43% 48%,transparent 49% 58%,#f0cf2c 59% 64%,transparent 65%);
+        }}
+        .gestion-miniatura:nth-child(5) .gestion-miniatura-preview {{
+            background:
+                repeating-linear-gradient(0deg,rgba(8,37,103,.15) 0 8px,transparent 8px 10px),
+                repeating-linear-gradient(90deg,#d7e6f7 0 14px,#5b8fc9 14px 28px,#173b73 28px 42px);
+        }}
+        .gestion-miniatura:nth-child(6) .gestion-miniatura-preview {{
+            background:
+                linear-gradient(90deg,#0b70c9 0 75%,transparent 75%) 0 2px/100% 7px no-repeat,
+                linear-gradient(90deg,#0b70c9 0 55%,transparent 55%) 0 15px/100% 7px no-repeat,
+                linear-gradient(90deg,#f0cf2c 0 88%,transparent 88%) 0 28px/100% 7px no-repeat;
+        }}
+        .gestion-miniatura:nth-child(7) .gestion-miniatura-preview {{
+            background:
+                linear-gradient(90deg,#94a3b8 0 82%,transparent 82%) 0 3px/100% 5px no-repeat,
+                linear-gradient(90deg,#94a3b8 0 66%,transparent 66%) 0 16px/100% 5px no-repeat,
+                linear-gradient(90deg,#94a3b8 0 74%,transparent 74%) 0 29px/100% 5px no-repeat;
+        }}
+        @media (max-width:900px) {{
+            .gestion-miniaturas {{ grid-template-columns:repeat(7,145px); }}
+            .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} {{
+                max-height:none; min-height:0; padding:18px 14px 22px;
+            }}
+        }}
+        </style>
         """,
         unsafe_allow_html=True,
     )
@@ -6590,6 +6684,8 @@ if MOSTRAR_CONTROL_DATOS:
 # VISTA SELECCIONADA
 # ============================================================
 if modulo_seleccionado == "Cartera":
+    slide_resumen = st.container(key="gestion_slide_resumen")
+    slide_resumen.__enter__()
     # ============================================================
     # RESUMEN CARTERA
     # ============================================================
@@ -6603,6 +6699,9 @@ if modulo_seleccionado == "Cartera":
         comentario_general_pais,
     )
 
+    slide_resumen.__exit__(None, None, None)
+    slide_kpis = st.container(key="gestion_slide_kpis")
+    slide_kpis.__enter__()
     st.markdown(
         '<div id="gestion-kpis" class="gestion-seccion-ancla"></div>'
         '<div class="gestion-seccion-cabecera"><span>2</span>KPIs de la última semana</div>',
@@ -6635,6 +6734,10 @@ if modulo_seleccionado == "Cartera":
                 )
     else:
         st.info("No hay indicadores disponibles para mostrar KPIs con los filtros actuales.")
+
+    slide_kpis.__exit__(None, None, None)
+    slide_evolucion = st.container(key="gestion_slide_evolucion")
+    slide_evolucion.__enter__()
 
     # ============================================================
     # GRÁFICAS CARTERA
@@ -6802,6 +6905,10 @@ if modulo_seleccionado == "Cartera":
             st.info("No hay indicadores disponibles para la gráfica de evolución semanal.")
 
 
+    mostrar_boton_comentario("grafica_evolucion", comentario_evolucion)
+    slide_evolucion.__exit__(None, None, None)
+    slide_coordinadoras = st.container(key="gestion_slide_coordinadoras")
+    slide_coordinadoras.__enter__()
     st.markdown(
         '<div id="gestion-coordinadoras" class="gestion-seccion-ancla"></div>'
         '<div class="gestion-seccion-cabecera"><span>4</span>Tipo de coordinadora</div>',
@@ -6896,13 +7003,15 @@ if modulo_seleccionado == "Cartera":
         comentario_pie = generar_comentario_pie(pie)
 
 
-    mostrar_boton_comentario("grafica_evolucion", comentario_evolucion)
     mostrar_boton_comentario("pie_coordinadoras", comentario_pie)
 
 
     # ============================================================
     # MATRIZ DE DESPLAZAMIENTO DE COORDINADORAS
     # ============================================================
+    slide_coordinadoras.__exit__(None, None, None)
+    slide_movimientos = st.container(key="gestion_slide_movimientos")
+    slide_movimientos.__enter__()
     st.markdown(
         '<div id="gestion-movimientos" class="gestion-seccion-ancla"></div>'
         '<div class="gestion-seccion-cabecera"><span>5</span>Movimientos de coordinadoras</div>',
@@ -7162,6 +7271,9 @@ if modulo_seleccionado == "Cartera":
     # ============================================================
     # TOP / BOTTOM POR VARIABLE
     # ============================================================
+    slide_movimientos.__exit__(None, None, None)
+    slide_top_bottom = st.container(key="gestion_slide_top_bottom")
+    slide_top_bottom.__enter__()
     st.markdown(
         '<div id="gestion-top-bottom" class="gestion-seccion-ancla"></div>'
         '<div class="gestion-seccion-cabecera"><span>6</span>Top / Bottom</div>',
@@ -7280,6 +7392,9 @@ if modulo_seleccionado == "Cartera":
 
     mostrar_boton_comentario("top_bottom", comentario_top_bottom)
 
+    slide_top_bottom.__exit__(None, None, None)
+    slide_conclusiones = st.container(key="gestion_slide_conclusiones")
+    slide_conclusiones.__enter__()
     st.markdown(
         '<div id="gestion-conclusiones" class="gestion-seccion-ancla"></div>'
         '<div class="gestion-seccion-cabecera"><span>7</span>Conclusiones</div>',
@@ -7299,6 +7414,9 @@ if modulo_seleccionado == "Cartera":
         "gestion_conclusiones_dinamicas",
         " ".join(dict.fromkeys(conclusiones_gestion)),
     )
+
+    slide_conclusiones.__exit__(None, None, None)
+    slide_top_bottom.__enter__()
 
     # ============================================================
     # TABLA POR NIVEL
@@ -7334,6 +7452,40 @@ if modulo_seleccionado == "Cartera":
         "Descargar detalle agrupado XLSX",
         f"detalle_{nivel}_semana_{semana_actual}.xlsx",
         key="descargar_detalle_agrupado_xlsx"
+    )
+
+    slide_top_bottom.__exit__(None, None, None)
+
+    miniaturas_gestion = [
+        ("resumen", "Resumen ejecutivo"),
+        ("kpis", "KPIs"),
+        ("evolucion", "Evolución"),
+        ("coordinadoras", "Tipo de coordinadora"),
+        ("movimientos", "Matriz de movimientos"),
+        ("top-bottom", "Top / Bottom"),
+        ("conclusiones", "Conclusiones"),
+    ]
+    html_miniaturas_gestion = []
+    unidad_parametro_gestion = normalizar_texto_tc(
+        unidad_negocio_seleccionada
+    ).replace(" ", "%20")
+    for numero_miniatura, (slug_miniatura, titulo_miniatura) in enumerate(
+        miniaturas_gestion,
+        start=1,
+    ):
+        clase_activa = " activa" if slug_miniatura == seccion_gestion_activa else ""
+        html_miniaturas_gestion.append(
+            f'''
+            <a class="gestion-miniatura{clase_activa}" href="?unidad={unidad_parametro_gestion}&seccion={slug_miniatura}" target="_self">
+                <span class="gestion-miniatura-numero">{numero_miniatura}</span>
+                <div class="gestion-miniatura-titulo">{html.escape(titulo_miniatura)}</div>
+                <div class="gestion-miniatura-preview"></div>
+            </a>
+            '''
+        )
+    st.markdown(
+        '<div class="gestion-miniaturas">' + "".join(html_miniaturas_gestion) + '</div>',
+        unsafe_allow_html=True,
     )
 
 else:
