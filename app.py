@@ -83,6 +83,26 @@ MAX_SEMANAS_VISUALES_COBRANZA = 20
 # Nombre de la imagen de fondo. Debe estar en la misma carpeta que este script.
 NOMBRE_IMAGEN_FONDO = "ChatGPT Image 19 may 2026, 11_58_09 a.m."
 
+# Fondo corporativo recreado con CSS. Conserva los arcos de las esquinas,
+# pero elimina la marca de agua central "Caprepa / Servicios Financieros".
+FONDO_CSS_SIN_MARCA = """
+background-image:
+    radial-gradient(ellipse 78% 62% at 112% -14%,
+        transparent 0 57%,
+        rgba(242,207,41,.13) 57.5% 61.5%,
+        transparent 62% 66%,
+        rgba(8,37,103,.09) 66.5% 70%,
+        transparent 70.5%),
+    radial-gradient(ellipse 66% 58% at -12% 112%,
+        transparent 0 58%,
+        rgba(242,207,41,.12) 58.5% 62.5%,
+        transparent 63% 67%,
+        rgba(8,37,103,.08) 67.5% 71%,
+        transparent 71.5%),
+    linear-gradient(#ffffff,#ffffff) !important;
+background-color:#ffffff !important;
+"""
+
 # Oculta la tarjeta superior de carga de archivo y el expander de control de datos.
 # El tablero seguirá usando RUTA_DEFAULT como origen de Cartera.
 MOSTRAR_SECCION_ARCHIVO = False
@@ -298,24 +318,11 @@ def imagen_logo_html(nombre_archivo: str, clase_css: str = "unidad-logo") -> str
 
 
 def aplicar_fondo_pagina(nombre_imagen: str):
-    ruta_imagen = buscar_imagen_fondo(nombre_imagen)
-
-    if ruta_imagen is None:
-        st.warning(
-            "No encontré la imagen de fondo en la misma carpeta del script. "
-            f"Revisa que exista el archivo: {nombre_imagen}.png, .jpg, .jpeg o .webp"
-        )
-        return
-
-    fondo_base64 = imagen_a_base64(str(ruta_imagen))
-
     st.markdown(
         f"""
         <style>
         .stApp {{
-            background-image:
-                linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.90)),
-                url("data:image/png;base64,{fondo_base64}");
+            {FONDO_CSS_SIN_MARCA}
             background-size: cover;
             background-position: top center;
             background-repeat: no-repeat;
@@ -5606,15 +5613,7 @@ if unidades_negocio:
 
         # Estilo autocontenido de la portada. Se inyecta antes de detener la
         # ejecución porque el tablero se abre únicamente al pulsar un mapa.
-        ruta_landing_marca_agua = buscar_imagen_fondo(NOMBRE_IMAGEN_FONDO)
-        landing_background = ""
-        if ruta_landing_marca_agua is not None:
-            landing_fondo_base64 = imagen_a_base64(str(ruta_landing_marca_agua))
-            landing_background = f'''
-                background-image:
-                    linear-gradient(rgba(248,250,252,0.94), rgba(248,250,252,0.98)),
-                    url("data:image/png;base64,{landing_fondo_base64}") !important;
-            '''
+        landing_background = FONDO_CSS_SIN_MARCA
 
         st.markdown(
             f"""
@@ -5630,13 +5629,21 @@ if unidades_negocio:
                 background-repeat:no-repeat !important;
                 background-attachment:fixed !important;
             }}
-            .main .block-container {{
+            .main .block-container,
+            [data-testid="stMainBlockContainer"] {{
                 max-width:1280px !important;
-                padding-top:1.25rem !important;
-                padding-bottom:1.25rem !important;
+                padding-top:.75rem !important;
+                padding-bottom:1rem !important;
                 background:transparent !important;
                 border:0 !important;
                 box-shadow:none !important;
+            }}
+            [data-testid="stVerticalBlock"]
+            > [data-testid="stElementContainer"]:has(style) {{
+                display:none !important;
+                height:0 !important;
+                margin:0 !important;
+                padding:0 !important;
             }}
             .inicio-hero {{ text-align:center; padding:2px 12px 8px; }}
             .inicio-kicker {{
@@ -6096,15 +6103,7 @@ if unidades_negocio:
 
         # Modo claro forzado para que la portada conserve la identidad visual
         # aun cuando el navegador o Streamlit estén configurados en tema oscuro.
-        ruta_landing_marca_agua = buscar_imagen_fondo(NOMBRE_IMAGEN_FONDO)
-        landing_background = ""
-        if ruta_landing_marca_agua is not None:
-            landing_fondo_base64 = imagen_a_base64(str(ruta_landing_marca_agua))
-            landing_background = f'''
-                background-image:
-                    linear-gradient(rgba(248,250,252,0.94), rgba(248,250,252,0.98)),
-                    url("data:image/png;base64,{landing_fondo_base64}") !important;
-            '''
+        landing_background = FONDO_CSS_SIN_MARCA
 
         st.markdown(
             f"""
@@ -6120,13 +6119,21 @@ if unidades_negocio:
                 background-repeat: no-repeat !important;
                 background-attachment: fixed !important;
             }}
-            .main .block-container {{
+            .main .block-container,
+            [data-testid="stMainBlockContainer"] {{
                 max-width: 1280px !important;
-                padding-top: 2rem !important;
-                padding-bottom: 3rem !important;
+                padding-top: .75rem !important;
+                padding-bottom: 1rem !important;
                 background: transparent !important;
                 border: 0 !important;
                 box-shadow: none !important;
+            }}
+            [data-testid="stVerticalBlock"]
+            > [data-testid="stElementContainer"]:has(style) {{
+                display:none !important;
+                height:0 !important;
+                margin:0 !important;
+                padding:0 !important;
             }}
             .inicio-hero {{ text-align:center; padding: 8px 12px 12px; }}
             .inicio-kicker {{
@@ -6388,6 +6395,122 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# ============================================================
+# AJUSTE ESTRUCTURAL MEDIDO EN STREAMLIT CLOUD
+# - elimina los huecos que generan los bloques <style> sin altura;
+# - elimina la fila reservada por cada diapositiva oculta;
+# - reduce el padding nativo superior/inferior de Streamlit;
+# - conserva los arcos del fondo sin la marca de agua central.
+# ============================================================
+if unidad_negocio_seleccionada is not None:
+    seccion_cloud_solicitada = str(
+        st.query_params.get("seccion")
+        or st.session_state.get("gestion_seccion_activa", "kpis")
+    )
+    if seccion_cloud_solicitada not in {
+        "kpis", "evolucion", "coordinadoras", "movimientos",
+        "top-bottom", "conclusiones", "cobranza-barras", "cobranza-lineas",
+    }:
+        seccion_cloud_solicitada = "kpis"
+    seccion_cloud_ajustada = seccion_cloud_solicitada.replace("-", "_")
+
+    st.markdown(
+        f"""
+        <style>
+        [data-testid="stMainBlockContainer"] {{
+            width:100% !important;
+            max-width:100% !important;
+            padding:10px clamp(12px,1.5vw,24px) 8px !important;
+            margin:0 !important;
+            box-sizing:border-box !important;
+        }}
+
+        .stApp,
+        [data-testid="stAppViewContainer"] {{
+            {FONDO_CSS_SIN_MARCA}
+            background-size:cover !important;
+            background-position:top center !important;
+            background-repeat:no-repeat !important;
+            background-attachment:fixed !important;
+        }}
+
+        /* El bloque raíz de Gestión usa un solo ritmo vertical compacto. */
+        [data-testid="stVerticalBlock"]:has(.st-key-gestion_header_barra) {{
+            gap:5px !important;
+        }}
+
+        /* Cada st.markdown que solo inyecta CSS medía 0 px, pero Streamlit le
+           agregaba 16 px de separación. No debe ocupar una fila visual. */
+        [data-testid="stVerticalBlock"]:has(.st-key-gestion_header_barra)
+        > [data-testid="stElementContainer"]:has(style) {{
+            display:none !important;
+            height:0 !important;
+            min-height:0 !important;
+            margin:0 !important;
+            padding:0 !important;
+        }}
+
+        /* Los siete slides ocultos dejaban siete filas vacías. Se ocultan sus
+           wrappers y se conserva únicamente la diapositiva seleccionada. */
+        [data-testid="stVerticalBlock"]:has(.st-key-gestion_header_barra)
+        > [data-testid="stLayoutWrapper"]:has([class*="st-key-gestion_slide_"]) {{
+            display:none !important;
+            height:0 !important;
+            min-height:0 !important;
+            margin:0 !important;
+        }}
+
+        [data-testid="stVerticalBlock"]:has(.st-key-gestion_header_barra)
+        > [data-testid="stLayoutWrapper"]:has(.st-key-gestion_slide_{seccion_cloud_ajustada}) {{
+            display:flex !important;
+            height:auto !important;
+            min-height:0 !important;
+        }}
+
+        .st-key-gestion_header_barra {{
+            margin:0 !important;
+        }}
+
+        [class*="st-key-gestion_slide_"] {{
+            margin:0 !important;
+        }}
+
+        .gestion-carrusel-real {{
+            margin:0 !important;
+        }}
+
+        /* El popover tiene un div intermedio; se apunta al botón real. */
+        .stApp .st-key-gestion_header_barra [data-testid="stPopoverButton"] {{
+            width:36px !important;
+            min-width:36px !important;
+            max-width:36px !important;
+            height:34px !important;
+            min-height:34px !important;
+            padding:0 !important;
+            border-radius:9px !important;
+            background:linear-gradient(180deg,#ffffff 0%,#edf4fc 100%) !important;
+            color:#082567 !important;
+            -webkit-text-fill-color:#082567 !important;
+            border:1px solid #b9cee7 !important;
+            box-shadow:0 2px 6px rgba(15,23,42,.07) !important;
+        }}
+
+        .stApp .st-key-gestion_header_barra [data-testid="stPopoverButton"] * {{
+            color:#082567 !important;
+            -webkit-text-fill-color:#082567 !important;
+            opacity:1 !important;
+        }}
+
+        @media (max-width:900px) {{
+            [data-testid="stMainBlockContainer"] {{
+                padding:7px 8px 8px !important;
+            }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 abrir_resumen_pais_click = False
 barra_gestion = st.container(key="gestion_header_barra")
@@ -9503,9 +9626,7 @@ if ruta_imagen_marca_agua is not None:
 
         .stApp,
         [data-testid="stAppViewContainer"] {{
-            background-image:
-                linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.91)),
-                url("data:image/png;base64,{fondo_marca_agua_base64}") !important;
+            {FONDO_CSS_SIN_MARCA}
             background-size: cover !important;
             background-position: top center !important;
             background-repeat: no-repeat !important;
@@ -9524,9 +9645,7 @@ if ruta_imagen_marca_agua is not None:
 
             .stApp,
             [data-testid="stAppViewContainer"] {{
-                background-image:
-                    linear-gradient(rgba(255,255,255,0.82), rgba(255,255,255,0.91)),
-                    url("data:image/png;base64,{fondo_marca_agua_base64}") !important;
+                {FONDO_CSS_SIN_MARCA}
                 background-size: cover !important;
                 background-position: top center !important;
                 background-repeat: no-repeat !important;
