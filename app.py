@@ -6410,7 +6410,7 @@ st.markdown(
 # - elimina los huecos que generan los bloques <style> sin altura;
 # - elimina la fila reservada por cada diapositiva oculta;
 # - reduce el padding nativo superior/inferior de Streamlit;
-# - conserva los arcos del fondo sin la marca de agua central.
+# - conserva completo el fondo original.
 # ============================================================
 if unidad_negocio_seleccionada is not None:
     seccion_cloud_solicitada = str(
@@ -6427,17 +6427,27 @@ if unidad_negocio_seleccionada is not None:
     st.markdown(
         f"""
         <style>
+        /* La cabecera flotante de Streamlit cubre los primeros 60 px con un
+           z-index muy alto. En Gestión quedaba encima de nuestros controles y
+           recibía sus clics, aunque visualmente fuera transparente. */
+        header[data-testid="stHeader"] {{
+            display:none !important;
+            height:0 !important;
+            min-height:0 !important;
+            pointer-events:none !important;
+        }}
+
         [data-testid="stMainBlockContainer"] {{
             width:100% !important;
             max-width:100% !important;
-            padding:10px clamp(12px,1.5vw,24px) 8px !important;
+            padding:12px clamp(14px,1.6vw,26px) 10px !important;
             margin:0 !important;
             box-sizing:border-box !important;
         }}
 
         /* El bloque raíz de Gestión usa un solo ritmo vertical compacto. */
         [data-testid="stVerticalBlock"]:has(.st-key-gestion_header_barra) {{
-            gap:5px !important;
+            gap:9px !important;
         }}
 
         /* Cada st.markdown que solo inyecta CSS medía 0 px, pero Streamlit le
@@ -6470,6 +6480,8 @@ if unidad_negocio_seleccionada is not None:
 
         .st-key-gestion_header_barra {{
             margin:0 !important;
+            position:relative !important;
+            z-index:50 !important;
         }}
 
         [class*="st-key-gestion_slide_"] {{
@@ -6482,11 +6494,11 @@ if unidad_negocio_seleccionada is not None:
 
         /* El popover tiene un div intermedio; se apunta al botón real. */
         .stApp .st-key-gestion_header_barra [data-testid="stPopoverButton"] {{
-            width:36px !important;
-            min-width:36px !important;
-            max-width:36px !important;
-            height:34px !important;
-            min-height:34px !important;
+            width:38px !important;
+            min-width:38px !important;
+            max-width:38px !important;
+            height:38px !important;
+            min-height:38px !important;
             padding:0 !important;
             border-radius:9px !important;
             background:linear-gradient(180deg,#ffffff 0%,#edf4fc 100%) !important;
@@ -6504,7 +6516,7 @@ if unidad_negocio_seleccionada is not None:
 
         @media (max-width:900px) {{
             [data-testid="stMainBlockContainer"] {{
-                padding:7px 8px 8px !important;
+                padding:9px 9px 8px !important;
             }}
         }}
         </style>
@@ -6516,8 +6528,8 @@ abrir_resumen_pais_click = False
 barra_gestion = st.container(key="gestion_header_barra")
 with barra_gestion:
     col_marca_barra, col_acciones_barra, col_pasos_barra = st.columns(
-        [1, 1, 1],
-        gap="small",
+        [.85, 1.25, 1.15],
+        gap="medium",
     )
 
     with col_marca_barra:
@@ -10033,8 +10045,8 @@ st.markdown(
     .st-key-gestion_header_barra {
         width:100% !important;
         max-width:100% !important;
-        margin:0 0 3px !important;
-        padding:8px 14px !important;
+        margin:0 !important;
+        padding:11px 16px !important;
         box-sizing:border-box !important;
         background:rgba(255,255,255,.97) !important;
         border:1px solid #dbe3ee !important;
@@ -10092,23 +10104,23 @@ st.markdown(
     }
 
     .stApp .st-key-gestion_header_barra button {
-        min-height:34px !important;
-        height:34px !important;
-        padding:0 10px !important;
-        border-radius:9px !important;
-        font-size:10.5px !important;
+        min-height:38px !important;
+        height:38px !important;
+        padding:0 12px !important;
+        border-radius:10px !important;
+        font-size:11px !important;
         box-shadow:0 2px 6px rgba(15,23,42,.07) !important;
     }
 
     .stApp .st-key-gestion_header_barra button * {
-        font-size:10.5px !important;
+        font-size:11px !important;
         line-height:1 !important;
     }
 
     .stApp .st-key-gestion_header_barra [data-testid="stPopover"] > button {
-        width:36px !important;
-        min-width:36px !important;
-        max-width:36px !important;
+        width:38px !important;
+        min-width:38px !important;
+        max-width:38px !important;
         padding:0 !important;
         background:#eef5fd !important;
         color:#082567 !important;
