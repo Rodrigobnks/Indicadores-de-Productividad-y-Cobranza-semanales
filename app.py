@@ -1290,10 +1290,12 @@ def aplicar_tipo_cambio_mxn(df_base: pd.DataFrame, modo_moneda: str) -> pd.DataF
     Convierte columnas monetarias a pesos mexicanos cuando el usuario elige MXN.
     Las variables no monetarias como clientes, faltas y coordinadoras no se modifican.
     """
-    df_tmp = df_base.copy()
-
     if modo_moneda != "Pesos mexicanos":
-        return df_tmp
+        # En moneda local no hay nada que transformar. Devolver la misma base
+        # evita duplicar en memoria cientos de miles de registros en cada rerun.
+        return df_base
+
+    df_tmp = df_base.copy()
 
     col_pais = obtener_columna_pais(df_tmp)
     if col_pais is None:
@@ -1392,9 +1394,14 @@ def limpiar_datos(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     df = normalizar_columnas(df)
 
-    for c in df.select_dtypes(include=["object"]).columns:
-        df[c] = df[c].astype(str).str.strip()
-        df[c] = df[c].replace({"nan": np.nan, "None": np.nan, "": np.nan})
+    columnas_texto = [
+        c for c in df.columns
+        if pd.api.types.is_object_dtype(df[c])
+        or pd.api.types.is_string_dtype(df[c])
+    ]
+    for c in columnas_texto:
+        df[c] = df[c].astype("string").str.strip()
+        df[c] = df[c].replace({"nan": pd.NA, "None": pd.NA, "": pd.NA})
 
     if "Semana del año" in df.columns:
         df["Semana del año"] = pd.to_numeric(df["Semana del año"], errors="coerce").astype("Int64")
@@ -1764,7 +1771,44 @@ def _preparar_cartera_concentrado(parte: pd.DataFrame, archivo: str) -> pd.DataF
     return parte
 
 
-@st.cache_data(show_spinner=False)
+def optimizar_memoria_cartera(df: pd.DataFrame) -> pd.DataFrame:
+    """Reduce memoria sin cambiar valores ni columnas usadas por el tablero."""
+    columnas_categoria = [
+        "Unidad de Negocio",
+        "Marca",
+        "País",
+        "Region",
+        "Subdireccion",
+        "Zona",
+        "Sucursal",
+        "Ruta",
+        "coordinadora_id",
+        "Tipo Coordinadora",
+    ]
+    for columna in columnas_categoria:
+        if columna in df.columns:
+            df[columna] = df[columna].astype("category")
+
+    for columna in [
+        "Semana del año",
+        "Año",
+        "Clientes Totales",
+        "Clientes al corriente",
+        "Faltas",
+        "Nunca Abonados",
+    ]:
+        if columna in df.columns:
+            df[columna] = pd.to_numeric(
+                df[columna], errors="coerce", downcast="integer"
+            )
+
+    if "IP" in df.columns:
+        df["IP"] = pd.to_numeric(df["IP"], errors="coerce", downcast="float")
+
+    return df
+
+
+@st.cache_resource(show_spinner=False)
 def cargar_cartera_desde_concentrados(
     ruta_carpeta: str,
     firma_archivos: tuple,
@@ -1817,8 +1861,28 @@ def cargar_cartera_desde_concentrados(
     if not partes:
         raise ValueError("Los concentrados no contienen registros de Cartera utilizables.")
 
-    cartera = pd.concat(partes, ignore_index=True, sort=False)
-    cartera = limpiar_datos(cartera)
+    solo_parquet_preparado = all(
+        Path(ruta_texto).suffix.lower() == ".parquet"
+        for ruta_texto, _tamano, _fecha_modificacion in firma_archivos
+    ) and all("Semana del año" in parte.columns for parte in partes)
+
+    cartera = partes[0] if len(partes) == 1 else pd.concat(
+        partes, ignore_index=True, sort=False
+    )
+
+    if solo_parquet_preparado:
+        # El consolidado entregado ya está limpio y sin duplicados. Repetir
+        # drop_duplicates sobre 837 mil filas multiplica el uso de memoria.
+        filas_antes = len(cartera)
+        cartera.attrs["duplicados_exactos_eliminados"] = 0
+        cartera.attrs["filas_antes_limpieza"] = filas_antes
+        cartera.attrs["filas_despues_limpieza"] = filas_antes
+        cartera.attrs["preconsolidado_cartera"] = True
+    else:
+        cartera = limpiar_datos(cartera)
+        cartera.attrs["preconsolidado_cartera"] = False
+
+    cartera = optimizar_memoria_cartera(cartera)
     cartera.attrs["ruta_origen"] = ruta_carpeta
     cartera.attrs["archivos_cargados"] = len(partes)
     cartera.attrs["hojas_cargadas"] = hojas_cargadas
@@ -2403,7 +2467,7 @@ def _fmt_comentario(valor):
 
 
 def filtrar_por_diccionario(df_base: pd.DataFrame, filtros: dict, excluir_col: str | None = None):
-    df_tmp = df_base.copy()
+    df_tmp = df_base
 
     for col, seleccion in filtros.items():
         if col == excluir_col:
@@ -2416,7 +2480,7 @@ def filtrar_por_diccionario(df_base: pd.DataFrame, filtros: dict, excluir_col: s
 
 
 def aplicar_filtros_base(df_base: pd.DataFrame, semanas_sel: list[int], filtros: dict):
-    df_tmp = df_base.copy()
+    df_tmp = df_base
 
     if "Semana del año" in df_tmp.columns and semanas_sel:
         df_tmp = df_tmp[df_tmp["Semana del año"].isin(semanas_sel)]
@@ -2497,6 +2561,9 @@ def aplicar_filtros_cobranza_desde_cartera(
 
 def recalcular_ip_agregado(df_base: pd.DataFrame) -> pd.DataFrame:
     """Recalcula IP a nivel agregado para evitar sumar porcentajes."""
+    if df_base.attrs.get("preconsolidado_cartera", False):
+        return df_base
+
     df_tmp = df_base.copy()
     if "Clientes al corriente" in df_tmp.columns and "Clientes Totales" in df_tmp.columns:
         clientes_corriente = pd.to_numeric(df_tmp["Clientes al corriente"], errors="coerce").fillna(0)
@@ -2513,6 +2580,9 @@ def detectar_columna_cobranza_cartera(df: pd.DataFrame):
 
 
 def consolidar_grano_correcto(df_base: pd.DataFrame, indicadores: list[str]) -> pd.DataFrame:
+    if df_base.attrs.get("preconsolidado_cartera", False):
+        return df_base
+
     df_tmp = df_base.copy()
 
     columnas_grano = [
@@ -5845,6 +5915,8 @@ if modulo_seleccionado == "Cartera":
             st.session_state.pop("rango_semanas_evolucion", None)
             st.session_state.pop("semana_inicio_evolucion", None)
             st.session_state.pop("semana_fin_evolucion", None)
+            st.session_state.pop("rango_semanas_evolucion_input", None)
+            st.session_state.pop("rango_semanas_evolucion_aplicado", None)
 
             def rango_evolucion_valido(valor) -> bool:
                 return (
@@ -5856,24 +5928,27 @@ if modulo_seleccionado == "Cartera":
                 )
 
             if not rango_evolucion_valido(
-                st.session_state.get("rango_semanas_evolucion_input")
+                st.session_state.get("rango_semanas_evolucion_input_v2")
             ):
-                st.session_state["rango_semanas_evolucion_input"] = rango_semanas_default
+                # El valor debe pasarse explícitamente al widget como tupla para
+                # que Streamlit lo construya en modo rango (dos extremos).
+                st.session_state.pop("rango_semanas_evolucion_input_v2", None)
 
             if not rango_evolucion_valido(
-                st.session_state.get("rango_semanas_evolucion_aplicado")
+                st.session_state.get("rango_semanas_evolucion_aplicado_v2")
             ):
-                st.session_state["rango_semanas_evolucion_aplicado"] = rango_semanas_default
+                st.session_state["rango_semanas_evolucion_aplicado_v2"] = rango_semanas_default
 
             with col_menu:
                 # El formulario evita ejecutar nuevamente toda la aplicación
                 # mientras se arrastran los extremos del rango.
-                with st.form("form_rango_semanas_evolucion", clear_on_submit=False):
+                with st.form("form_rango_semanas_evolucion_v2", clear_on_submit=False):
                     rango_semanas_input = st.select_slider(
                         "Rango de semanas",
                         options=semanas_evolucion,
+                        value=rango_semanas_default,
                         format_func=lambda semana: f"S{int(semana)}",
-                        key="rango_semanas_evolucion_input",
+                        key="rango_semanas_evolucion_input_v2",
                     )
                     aplicar_rango_semanas = st.form_submit_button(
                         "Aplicar rango",
@@ -5881,14 +5956,14 @@ if modulo_seleccionado == "Cartera":
                     )
 
                 if aplicar_rango_semanas:
-                    st.session_state["rango_semanas_evolucion_aplicado"] = tuple(
+                    st.session_state["rango_semanas_evolucion_aplicado_v2"] = tuple(
                         rango_semanas_input
                     )
 
                 (
                     semana_inicio_evolucion,
                     semana_fin_evolucion,
-                ) = st.session_state["rango_semanas_evolucion_aplicado"]
+                ) = st.session_state["rango_semanas_evolucion_aplicado_v2"]
 
                 indicador_grafica = st.selectbox(
                     "Indicador",
