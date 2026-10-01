@@ -30,12 +30,18 @@ try:
 except NameError:
     CARPETA_APP = Path.cwd()
 
-# Cartera se consolida desde los Excel guardados en esta carpeta. La variable
-# de entorno permite cambiar la ubicación sin editar el código.
+# Cartera se consolida desde un Parquet o desde los Excel guardados en esta
+# carpeta. En Streamlit acepta tanto Concentrados/ como la raíz junto a app.py.
+# La variable de entorno permite cambiar la ubicación sin editar el código.
+CARPETA_CONCENTRADOS_REPOSITORIO = CARPETA_APP / "Concentrados"
 RUTA_CARTERA_CONCENTRADOS = Path(
     os.environ.get(
         "CARPETA_CARTERA_CONCENTRADOS",
-        str(CARPETA_APP / "Concentrados"),
+        str(
+            CARPETA_CONCENTRADOS_REPOSITORIO
+            if CARPETA_CONCENTRADOS_REPOSITORIO.is_dir()
+            else CARPETA_APP
+        ),
     )
 )
 RUTA_DEFAULT = str(RUTA_CARTERA_CONCENTRADOS)
