@@ -5,6 +5,7 @@ import html
 import re
 from pathlib import Path
 from io import BytesIO
+from urllib.parse import quote
 
 import numpy as np
 import pandas as pd
@@ -5110,11 +5111,24 @@ if unidades_negocio:
             None,
         )
         if unidad_desde_mapa is not None:
+            cambio_de_unidad = unidad_guardada != unidad_desde_mapa
+            seccion_desde_enlace = str(st.query_params.get("seccion", "resumen"))
+            if seccion_desde_enlace not in {
+                "resumen",
+                "kpis",
+                "evolucion",
+                "coordinadoras",
+                "movimientos",
+                "top-bottom",
+                "conclusiones",
+            }:
+                seccion_desde_enlace = "resumen"
             st.session_state["unidad_negocio_app"] = unidad_desde_mapa
-            st.session_state["gestion_seccion_activa"] = "resumen"
-            st.session_state["modo_moneda_superior"] = "Moneda local"
-            st.session_state.pop("filtro_superior_País", None)
-            st.session_state.pop("filtro_superior_Marca", None)
+            st.session_state["gestion_seccion_activa"] = seccion_desde_enlace
+            if cambio_de_unidad:
+                st.session_state["modo_moneda_superior"] = "Moneda local"
+                st.session_state.pop("filtro_superior_País", None)
+                st.session_state.pop("filtro_superior_Marca", None)
             st.query_params.clear()
             st.rerun()
 
@@ -6167,6 +6181,13 @@ secciones_gestion_validas = [
     "top-bottom",
     "conclusiones",
 ]
+
+seccion_query = st.query_params.get("seccion")
+if seccion_query:
+    seccion_query = str(seccion_query)
+    if seccion_query in secciones_gestion_validas:
+        st.session_state["gestion_seccion_activa"] = seccion_query
+
 seccion_gestion_activa = str(
     st.session_state.get("gestion_seccion_activa", "resumen")
 )
@@ -6312,6 +6333,255 @@ if modulo_seleccionado == "Cartera":
             .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} [data-testid="stHorizontalBlock"] {{
                 flex-wrap:wrap !important;
             }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# ============================================================
+# MINIATURAS FIELES Y DIAPOSITIVA SIN ADORNOS EXTERIORES
+# ============================================================
+if globals().get("modulo_seleccionado") == "Cartera":
+    miniatura_activa_limpia = str(
+        st.session_state.get("gestion_seccion_activa", "resumen")
+    ).replace("-", "_")
+
+    st.markdown(
+        f"""
+        <style>
+        /* Quita por completo las curvas decorativas amarilla y azul. */
+        [class*="st-key-gestion_slide_"]::before,
+        [class*="st-key-gestion_slide_"]::after {{
+            content:none !important;
+            display:none !important;
+            border:0 !important;
+            background:none !important;
+        }}
+
+        /* La diapositiva ocupa el ancho útil y crece con el contenido, sin scroll propio. */
+        .st-key-gestion_slide_{miniatura_activa_limpia} {{
+            width:100% !important;
+            max-width:100% !important;
+            min-width:0 !important;
+            min-height:0 !important;
+            height:auto !important;
+            max-height:none !important;
+            overflow:visible !important;
+            margin:6px 0 10px !important;
+            padding:clamp(14px,1.7vw,24px) clamp(14px,2vw,28px) 22px !important;
+            box-sizing:border-box !important;
+            border:1px solid #d8e1ed !important;
+            border-radius:12px !important;
+            background:#ffffff !important;
+            box-shadow:0 8px 22px rgba(15,23,42,.08) !important;
+        }}
+
+        .st-key-gestion_slide_{miniatura_activa_limpia} .gestion-seccion-cabecera {{
+            margin:0 0 9px !important;
+        }}
+
+        .st-key-gestion_slide_{miniatura_activa_limpia} [data-testid="stPlotlyChart"],
+        .st-key-gestion_slide_{miniatura_activa_limpia} [data-testid="stDataFrame"],
+        .st-key-gestion_slide_{miniatura_activa_limpia} [data-testid="stTable"],
+        .st-key-gestion_slide_{miniatura_activa_limpia} img,
+        .st-key-gestion_slide_{miniatura_activa_limpia} svg {{
+            max-width:100% !important;
+            box-sizing:border-box !important;
+        }}
+
+        /* Carrusel real: solo esta franja puede desplazarse horizontalmente. */
+        .gestion-carrusel-real {{
+            display:flex;
+            flex-flow:row nowrap;
+            align-items:stretch;
+            gap:10px;
+            width:100%;
+            max-width:100%;
+            overflow-x:auto;
+            overflow-y:hidden;
+            box-sizing:border-box;
+            padding:4px 2px 11px;
+            margin:0;
+            overscroll-behavior-inline:contain;
+            scrollbar-width:thin;
+            scrollbar-color:#8ea7c6 transparent;
+        }}
+
+        .gestion-carrusel-real::-webkit-scrollbar {{ height:8px; }}
+        .gestion-carrusel-real::-webkit-scrollbar-track {{ background:transparent; }}
+        .gestion-carrusel-real::-webkit-scrollbar-thumb {{
+            background:#8ea7c6;
+            border-radius:999px;
+        }}
+
+        .gestion-miniatura-real {{
+            position:relative;
+            flex:1 0 178px;
+            min-width:178px;
+            height:124px;
+            box-sizing:border-box;
+            overflow:hidden;
+            padding:10px 10px 9px;
+            border:1px solid #d4deea;
+            border-radius:10px;
+            background:#ffffff;
+            box-shadow:0 4px 11px rgba(15,23,42,.08);
+            color:#082567 !important;
+            text-decoration:none !important;
+            transition:border-color .14s ease,box-shadow .14s ease,transform .14s ease;
+        }}
+
+        .gestion-miniatura-real:hover {{
+            border-color:#8fb6e3;
+            box-shadow:0 7px 16px rgba(15,23,42,.13);
+            transform:translateY(-1px);
+            color:#082567 !important;
+            text-decoration:none !important;
+        }}
+
+        .gestion-miniatura-real.activa {{
+            border:2px solid #0b70c9;
+            padding:9px 9px 8px;
+            box-shadow:0 0 0 2px rgba(11,112,201,.11),0 6px 15px rgba(15,23,42,.11);
+        }}
+
+        .gestion-miniatura-titulo-real {{
+            position:relative;
+            z-index:3;
+            min-height:23px;
+            overflow:hidden;
+            color:#082567 !important;
+            font-size:11px;
+            font-weight:950;
+            line-height:1.05;
+            text-align:left;
+            white-space:normal;
+        }}
+
+        .gestion-miniatura-numero-real {{
+            position:absolute;
+            left:8px;
+            bottom:7px;
+            z-index:5;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            width:23px;
+            height:23px;
+            border-radius:50%;
+            background:#082567;
+            color:#ffffff !important;
+            font-size:11px;
+            font-weight:950;
+            box-shadow:0 2px 5px rgba(8,37,103,.22);
+        }}
+
+        /* 1. Resumen ejecutivo: dona y tarjetas de resultado. */
+        .mini-resumen {{
+            position:absolute; left:38px; right:9px; top:34px; bottom:9px;
+            display:grid; grid-template-columns:55px 1fr; gap:9px; align-items:center;
+        }}
+        .mini-dona {{
+            width:48px; height:48px; border-radius:50%;
+            background:conic-gradient(#0b70c9 0 41%,#f49aa0 41% 63%,#76b7ea 63% 84%,#ff2d2d 84% 100%);
+            box-shadow:inset 0 0 0 13px #ffffff;
+        }}
+        .mini-resumen-datos {{ display:flex; flex-direction:column; gap:4px; }}
+        .mini-resumen-datos b {{ color:#082567; font-size:8px; line-height:1; }}
+        .mini-resumen-datos strong {{ color:#18864b; font-size:8px; line-height:1; }}
+        .mini-resumen-datos i {{ display:block; height:5px; border-radius:2px; background:#dbeafe; width:88%; }}
+        .mini-resumen-datos i:last-child {{ width:66%; background:#dcfce7; }}
+
+        /* 2. KPIs: tres tarjetas y evolución en columnas. */
+        .mini-kpis {{ position:absolute; left:39px; right:9px; top:34px; bottom:8px; }}
+        .mini-kpis > span {{
+            display:inline-flex; width:29%; height:20px; margin-right:2%;
+            border-radius:4px; background:#eaf3fd; align-items:center; gap:3px; padding:2px 3px;
+            box-sizing:border-box;
+        }}
+        .mini-kpis > span b {{ color:#1d9a5b; font-size:7px; }}
+        .mini-kpis > span i {{ height:4px; width:70%; background:#8eabd0; border-radius:2px; }}
+        .mini-columnas {{ position:absolute; inset:26px 0 0; display:flex; align-items:flex-end; justify-content:space-around; border-bottom:1px solid #cbd5e1; }}
+        .mini-columnas i {{ width:9%; background:#0b70c9; height:45%; }}
+        .mini-columnas i:nth-child(2) {{ height:76%; background:#f0cf2c; }}
+        .mini-columnas i:nth-child(3) {{ height:58%; background:#76b7ea; }}
+        .mini-columnas i:nth-child(4) {{ height:90%; }}
+        .mini-columnas i:nth-child(5) {{ height:64%; background:#f0cf2c; }}
+        .mini-columnas i:nth-child(6) {{ height:82%; background:#76b7ea; }}
+
+        /* 3. Evolución semanal: gráfica de líneas completa. */
+        .mini-evolucion {{
+            position:absolute; left:39px; right:9px; top:35px; bottom:10px;
+            background:repeating-linear-gradient(0deg,transparent 0 15px,#e5eaf1 15px 16px);
+            border-bottom:1px solid #b8c5d6;
+        }}
+        .mini-evolucion svg {{ width:100%; height:100%; overflow:visible; }}
+        .mini-evolucion path {{ fill:none; stroke:#1976c9; stroke-width:3; }}
+        .mini-evolucion path.linea-secundaria {{ stroke:#f0c928; stroke-width:2.5; }}
+
+        /* 4. Tipo de coordinadora: dona y leyenda por categoría. */
+        .mini-coordinadoras {{
+            position:absolute; left:39px; right:9px; top:34px; bottom:9px;
+            display:grid; grid-template-columns:58px 1fr; gap:8px; align-items:center;
+        }}
+        .mini-dona-coord {{ width:53px; height:53px; box-shadow:inset 0 0 0 15px #ffffff; }}
+        .mini-leyenda {{ display:flex; flex-direction:column; gap:6px; }}
+        .mini-leyenda i {{ display:block; height:5px; width:88%; border-radius:2px; background:#0b70c9; }}
+        .mini-leyenda i:nth-child(2) {{ width:72%; background:#f49aa0; }}
+        .mini-leyenda i:nth-child(3) {{ width:80%; background:#76b7ea; }}
+        .mini-leyenda i:nth-child(4) {{ width:54%; background:#ff2d2d; }}
+
+        /* 5. Matriz: celdas de intensidad como la tabla principal. */
+        .mini-matriz {{
+            position:absolute; left:42px; right:12px; top:37px; bottom:12px;
+            display:grid; grid-template-columns:repeat(5,1fr); grid-template-rows:repeat(3,1fr);
+            gap:2px; padding:3px; border-radius:5px; background:#eaf2fb;
+        }}
+        .mini-matriz i {{ background:#d9e8f8; border-radius:1px; }}
+        .mini-matriz i:nth-child(2), .mini-matriz i:nth-child(6), .mini-matriz i:nth-child(13) {{ background:#91b4dc; }}
+        .mini-matriz i:nth-child(3), .mini-matriz i:nth-child(8), .mini-matriz i:nth-child(12) {{ background:#4f7fb7; }}
+        .mini-matriz i:nth-child(7), .mini-matriz i:nth-child(9) {{ background:#163c73; }}
+
+        /* 6. Top / Bottom: dos rankings lado a lado. */
+        .mini-top-bottom {{
+            position:absolute; left:39px; right:9px; top:36px; bottom:11px;
+            display:grid; grid-template-columns:1fr 1fr; gap:10px;
+        }}
+        .mini-top-bottom > div {{ display:flex; flex-direction:column; gap:6px; padding-top:3px; }}
+        .mini-top-bottom i {{ display:block; height:6px; background:#0b70c9; }}
+        .mini-top-bottom div:first-child i:nth-child(1) {{ width:92%; }}
+        .mini-top-bottom div:first-child i:nth-child(2) {{ width:72%; }}
+        .mini-top-bottom div:first-child i:nth-child(3) {{ width:55%; }}
+        .mini-top-bottom div:first-child i:nth-child(4) {{ width:38%; }}
+        .mini-top-bottom div:last-child i {{ background:#efc91f; }}
+        .mini-top-bottom div:last-child i:nth-child(1) {{ width:88%; }}
+        .mini-top-bottom div:last-child i:nth-child(2) {{ width:66%; }}
+        .mini-top-bottom div:last-child i:nth-child(3) {{ width:51%; }}
+        .mini-top-bottom div:last-child i:nth-child(4) {{ width:34%; }}
+
+        /* 7. Conclusiones: tres hallazgos ejecutivos. */
+        .mini-conclusiones {{
+            position:absolute; left:40px; right:10px; top:37px; bottom:10px;
+            display:flex; flex-direction:column; gap:7px;
+        }}
+        .mini-conclusiones span {{ display:grid; grid-template-columns:17px 1fr; align-items:center; gap:6px; }}
+        .mini-conclusiones b {{
+            display:flex; align-items:center; justify-content:center; width:16px; height:16px;
+            border-radius:50%; background:#dff4eb; color:#177553; font-size:8px;
+        }}
+        .mini-conclusiones span:nth-child(2) b {{ background:#fff3cd; color:#9a6b00; }}
+        .mini-conclusiones span:nth-child(3) b {{ background:#e6f0fb; color:#0b70c9; }}
+        .mini-conclusiones i {{ display:block; height:5px; border-radius:2px; background:#94a3b8; width:92%; }}
+        .mini-conclusiones span:nth-child(2) i {{ width:72%; }}
+        .mini-conclusiones span:nth-child(3) i {{ width:82%; }}
+
+        @media (max-width:900px) {{
+            [data-testid="stAppViewContainer"] .main .block-container {{
+                padding-left:10px !important;
+                padding-right:10px !important;
+            }}
+            .gestion-miniatura-real {{ flex-basis:174px; min-width:174px; }}
         }}
         </style>
         """,
@@ -7522,29 +7792,85 @@ if modulo_seleccionado == "Cartera":
     slide_conclusiones.__exit__(None, None, None)
 
     miniaturas_gestion = [
-        ("resumen", "Resumen ejecutivo"),
-        ("kpis", "KPIs"),
-        ("evolucion", "Evolución"),
-        ("coordinadoras", "Tipo de coordinadora"),
-        ("movimientos", "Matriz de movimientos"),
-        ("top-bottom", "Top / Bottom"),
-        ("conclusiones", "Conclusiones"),
+        (
+            "resumen",
+            "Resumen ejecutivo",
+            '<div class="mini-resumen">'
+            '<div class="mini-dona"></div>'
+            '<div class="mini-resumen-datos"><b>Resultado semanal</b><i></i><strong>Variación</strong><i></i></div>'
+            '</div>',
+        ),
+        (
+            "kpis",
+            "KPIs",
+            '<div class="mini-kpis">'
+            '<span><b>▲</b><i></i></span><span><b>●</b><i></i></span><span><b>▲</b><i></i></span>'
+            '<div class="mini-columnas"><i></i><i></i><i></i><i></i><i></i><i></i></div>'
+            '</div>',
+        ),
+        (
+            "evolucion",
+            "Evolución semanal",
+            '<div class="mini-evolucion">'
+            '<svg viewBox="0 0 180 58" preserveAspectRatio="none" aria-hidden="true">'
+            '<path d="M2 50 L28 38 L52 43 L77 23 L103 31 L128 15 L154 21 L178 7" />'
+            '<path class="linea-secundaria" d="M2 55 L30 49 L57 35 L86 42 L116 30 L146 32 L178 20" />'
+            '</svg></div>',
+        ),
+        (
+            "coordinadoras",
+            "Tipo de coordinadora",
+            '<div class="mini-coordinadoras">'
+            '<div class="mini-dona mini-dona-coord"></div>'
+            '<div class="mini-leyenda"><i></i><i></i><i></i><i></i></div>'
+            '</div>',
+        ),
+        (
+            "movimientos",
+            "Matriz de movimientos",
+            '<div class="mini-matriz">'
+            '<i></i><i></i><i></i><i></i><i></i>'
+            '<i></i><i></i><i></i><i></i><i></i>'
+            '<i></i><i></i><i></i><i></i><i></i>'
+            '</div>',
+        ),
+        (
+            "top-bottom",
+            "Top / Bottom",
+            '<div class="mini-top-bottom">'
+            '<div><i></i><i></i><i></i><i></i></div>'
+            '<div><i></i><i></i><i></i><i></i></div>'
+            '</div>',
+        ),
+        (
+            "conclusiones",
+            "Conclusiones",
+            '<div class="mini-conclusiones">'
+            '<span><b>✓</b><i></i></span><span><b>!</b><i></i></span><span><b>→</b><i></i></span>'
+            '</div>',
+        ),
     ]
-    carrusel_gestion = st.container(key="gestion_carrusel")
-    with carrusel_gestion:
-        columnas_miniaturas = st.columns(len(miniaturas_gestion), gap="small")
-        for numero_miniatura, (slug_miniatura, titulo_miniatura) in enumerate(
-            miniaturas_gestion,
-            start=1,
-        ):
-            with columnas_miniaturas[numero_miniatura - 1]:
-                if st.button(
-                    titulo_miniatura,
-                    key=f"gestion_mini_{slug_miniatura.replace('-', '_')}",
-                    use_container_width=True,
-                ):
-                    st.session_state["gestion_seccion_activa"] = slug_miniatura
-                    st.rerun()
+
+    unidad_miniaturas = quote(str(unidad_negocio_seleccionada or ""), safe="")
+    tarjetas_miniaturas = []
+    for numero_miniatura, (slug_miniatura, titulo_miniatura, vista_miniatura) in enumerate(
+        miniaturas_gestion,
+        start=1,
+    ):
+        clase_activa = " activa" if slug_miniatura == seccion_gestion_activa else ""
+        tarjetas_miniaturas.append(
+            f'<a class="gestion-miniatura-real{clase_activa}" '
+            f'href="?unidad={unidad_miniaturas}&amp;seccion={slug_miniatura}" target="_self">'
+            f'<div class="gestion-miniatura-titulo-real">{html.escape(titulo_miniatura)}</div>'
+            f'{vista_miniatura}'
+            f'<span class="gestion-miniatura-numero-real">{numero_miniatura}</span>'
+            '</a>'
+        )
+
+    st.markdown(
+        '<div class="gestion-carrusel-real">' + "".join(tarjetas_miniaturas) + '</div>',
+        unsafe_allow_html=True,
+    )
 
 else:
     # ============================================================
@@ -8955,6 +9281,40 @@ if globals().get("modulo_seleccionado") == "Cartera":
                 min-width:158px !important;
                 max-width:158px !important;
             }}
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+# Regla definitiva: la tarjeta seleccionada usa todo el ancho, no tiene
+# adornos circulares y nunca crea un scroll interno.
+if globals().get("modulo_seleccionado") == "Cartera":
+    seccion_final_ajustada = str(
+        st.session_state.get("gestion_seccion_activa", "resumen")
+    ).replace("-", "_")
+    st.markdown(
+        f"""
+        <style>
+        [class*="st-key-gestion_slide_"]::before,
+        [class*="st-key-gestion_slide_"]::after {{
+            content:none !important;
+            display:none !important;
+            border:0 !important;
+            background:none !important;
+        }}
+        .st-key-gestion_slide_{seccion_final_ajustada} {{
+            width:100% !important;
+            max-width:100% !important;
+            min-width:0 !important;
+            min-height:0 !important;
+            height:auto !important;
+            max-height:none !important;
+            overflow:visible !important;
+            margin:6px 0 10px !important;
+            padding:clamp(14px,1.7vw,24px) clamp(14px,2vw,28px) 22px !important;
+            border-radius:12px !important;
+            background:#ffffff !important;
         }}
         </style>
         """,
