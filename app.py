@@ -5101,7 +5101,6 @@ if unidades_negocio:
     # el tablero correspondiente, sin un botón intermedio.
     unidad_query = st.query_params.get("unidad")
     if unidad_query:
-        seccion_query = st.query_params.get("seccion")
         unidad_desde_mapa = next(
             (
                 unidad
@@ -5112,12 +5111,11 @@ if unidades_negocio:
         )
         if unidad_desde_mapa is not None:
             st.session_state["unidad_negocio_app"] = unidad_desde_mapa
+            st.session_state["gestion_seccion_activa"] = "resumen"
             st.session_state["modo_moneda_superior"] = "Moneda local"
             st.session_state.pop("filtro_superior_País", None)
             st.session_state.pop("filtro_superior_Marca", None)
             st.query_params.clear()
-            if seccion_query:
-                st.query_params["seccion"] = str(seccion_query)
             st.rerun()
 
     if unidad_guardada is None:
@@ -6169,9 +6167,12 @@ secciones_gestion_validas = [
     "top-bottom",
     "conclusiones",
 ]
-seccion_gestion_activa = str(st.query_params.get("seccion", "resumen"))
+seccion_gestion_activa = str(
+    st.session_state.get("gestion_seccion_activa", "resumen")
+)
 if seccion_gestion_activa not in secciones_gestion_validas:
     seccion_gestion_activa = "resumen"
+    st.session_state["gestion_seccion_activa"] = seccion_gestion_activa
 
 if modulo_seleccionado == "Cartera":
     st.markdown(
@@ -6181,6 +6182,9 @@ if modulo_seleccionado == "Cartera":
         .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} {{
             display:block !important;
             position:relative;
+            width:100% !important;
+            max-width:100% !important;
+            box-sizing:border-box !important;
             min-height:52vh;
             max-height:64vh;
             overflow-y:auto;
@@ -6204,6 +6208,22 @@ if modulo_seleccionado == "Cartera":
             border:22px solid #082567; border-left-color:transparent;
             border-top-color:transparent; transform:rotate(-8deg);
             pointer-events:none; opacity:.96;
+        }}
+        .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} [data-testid="stPlotlyChart"] {{
+            width:100% !important; max-width:100% !important; overflow:hidden !important;
+        }}
+        .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} [data-testid="stPlotlyChart"] > div,
+        .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} .js-plotly-plot,
+        .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} .plot-container {{
+            width:100% !important; max-width:100% !important;
+        }}
+        .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} [data-testid="stDataFrame"],
+        .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} [data-testid="stTable"] {{
+            width:100% !important; max-width:100% !important; overflow-x:auto !important;
+        }}
+        .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} img,
+        .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} svg {{
+            max-width:100% !important;
         }}
         .gestion-miniaturas {{
             display:grid; grid-template-columns:repeat(7,minmax(145px,1fr)); gap:10px;
@@ -6255,10 +6275,42 @@ if modulo_seleccionado == "Cartera":
                 linear-gradient(90deg,#94a3b8 0 66%,transparent 66%) 0 16px/100% 5px no-repeat,
                 linear-gradient(90deg,#94a3b8 0 74%,transparent 74%) 0 29px/100% 5px no-repeat;
         }}
+        .st-key-gestion_carrusel {{
+            width:100%; overflow-x:auto; overflow-y:hidden; padding:3px 2px 9px;
+            scrollbar-color:#9db5d4 transparent; scrollbar-width:thin;
+        }}
+        .st-key-gestion_carrusel [data-testid="stHorizontalBlock"] {{
+            min-width:1080px; gap:10px !important;
+        }}
+        .st-key-gestion_carrusel button {{
+            min-height:94px !important; height:94px !important;
+            white-space:normal !important; line-height:1.2 !important;
+            align-items:flex-start !important; justify-content:flex-start !important;
+            text-align:left !important; padding:12px 11px !important;
+            border:2px solid #dbe3ee !important; border-radius:12px !important;
+            color:#082567 !important; font-size:12px !important; font-weight:900 !important;
+            background:
+                linear-gradient(90deg,#0b70c9 0 66%,transparent 66%) 12px 58px/70% 6px no-repeat,
+                linear-gradient(90deg,#f0cf2c 0 48%,transparent 48%) 12px 72px/70% 6px no-repeat,
+                linear-gradient(145deg,#ffffff 0%,#eef5fd 100%) !important;
+            box-shadow:0 5px 14px rgba(15,23,42,.07) !important;
+        }}
+        .st-key-gestion_carrusel button:hover {{
+            transform:translateY(-2px); border-color:#d99932 !important;
+        }}
+        .st-key-gestion_mini_{seccion_gestion_activa.replace('-', '_')} button {{
+            border-color:#0b70c9 !important;
+            box-shadow:0 0 0 2px rgba(11,112,201,.14),0 7px 18px rgba(15,23,42,.10) !important;
+        }}
         @media (max-width:900px) {{
             .gestion-miniaturas {{ grid-template-columns:repeat(7,145px); }}
             .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} {{
-                max-height:none; min-height:0; padding:18px 14px 22px;
+                width:100% !important; max-width:100% !important;
+                max-height:68vh; min-height:46vh; padding:18px 14px 22px;
+                overflow-y:auto; overflow-x:hidden;
+            }}
+            .st-key-gestion_slide_{seccion_gestion_activa.replace('-', '_')} [data-testid="stHorizontalBlock"] {{
+                flex-wrap:wrap !important;
             }}
         }}
         </style>
@@ -7392,14 +7444,6 @@ if modulo_seleccionado == "Cartera":
 
     mostrar_boton_comentario("top_bottom", comentario_top_bottom)
 
-    slide_top_bottom.__exit__(None, None, None)
-    slide_conclusiones = st.container(key="gestion_slide_conclusiones")
-    slide_conclusiones.__enter__()
-    st.markdown(
-        '<div id="gestion-conclusiones" class="gestion-seccion-ancla"></div>'
-        '<div class="gestion-seccion-cabecera"><span>7</span>Conclusiones</div>',
-        unsafe_allow_html=True,
-    )
     conclusiones_gestion = [
         texto
         for texto in [
@@ -7410,13 +7454,6 @@ if modulo_seleccionado == "Cartera":
         ]
         if texto is not None and str(texto).strip()
     ]
-    mostrar_boton_comentario(
-        "gestion_conclusiones_dinamicas",
-        " ".join(dict.fromkeys(conclusiones_gestion)),
-    )
-
-    slide_conclusiones.__exit__(None, None, None)
-    slide_top_bottom.__enter__()
 
     # ============================================================
     # TABLA POR NIVEL
@@ -7456,6 +7493,19 @@ if modulo_seleccionado == "Cartera":
 
     slide_top_bottom.__exit__(None, None, None)
 
+    slide_conclusiones = st.container(key="gestion_slide_conclusiones")
+    slide_conclusiones.__enter__()
+    st.markdown(
+        '<div id="gestion-conclusiones" class="gestion-seccion-ancla"></div>'
+        '<div class="gestion-seccion-cabecera"><span>7</span>Conclusiones</div>',
+        unsafe_allow_html=True,
+    )
+    mostrar_boton_comentario(
+        "gestion_conclusiones_dinamicas",
+        " ".join(dict.fromkeys(conclusiones_gestion)),
+    )
+    slide_conclusiones.__exit__(None, None, None)
+
     miniaturas_gestion = [
         ("resumen", "Resumen ejecutivo"),
         ("kpis", "KPIs"),
@@ -7465,28 +7515,21 @@ if modulo_seleccionado == "Cartera":
         ("top-bottom", "Top / Bottom"),
         ("conclusiones", "Conclusiones"),
     ]
-    html_miniaturas_gestion = []
-    unidad_parametro_gestion = normalizar_texto_tc(
-        unidad_negocio_seleccionada
-    ).replace(" ", "%20")
-    for numero_miniatura, (slug_miniatura, titulo_miniatura) in enumerate(
-        miniaturas_gestion,
-        start=1,
-    ):
-        clase_activa = " activa" if slug_miniatura == seccion_gestion_activa else ""
-        html_miniaturas_gestion.append(
-            f'''
-            <a class="gestion-miniatura{clase_activa}" href="?unidad={unidad_parametro_gestion}&seccion={slug_miniatura}" target="_self">
-                <span class="gestion-miniatura-numero">{numero_miniatura}</span>
-                <div class="gestion-miniatura-titulo">{html.escape(titulo_miniatura)}</div>
-                <div class="gestion-miniatura-preview"></div>
-            </a>
-            '''
-        )
-    st.markdown(
-        '<div class="gestion-miniaturas">' + "".join(html_miniaturas_gestion) + '</div>',
-        unsafe_allow_html=True,
-    )
+    carrusel_gestion = st.container(key="gestion_carrusel")
+    with carrusel_gestion:
+        columnas_miniaturas = st.columns(len(miniaturas_gestion), gap="small")
+        for numero_miniatura, (slug_miniatura, titulo_miniatura) in enumerate(
+            miniaturas_gestion,
+            start=1,
+        ):
+            with columnas_miniaturas[numero_miniatura - 1]:
+                if st.button(
+                    f"{numero_miniatura}. {titulo_miniatura}",
+                    key=f"gestion_mini_{slug_miniatura.replace('-', '_')}",
+                    use_container_width=True,
+                ):
+                    st.session_state["gestion_seccion_activa"] = slug_miniatura
+                    st.rerun()
 
 else:
     # ============================================================
