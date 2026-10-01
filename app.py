@@ -5836,39 +5836,59 @@ if modulo_seleccionado == "Cartera":
                 int(semana)
                 for semana in df_filtrado["Semana del año"].dropna().unique()
             )
-            # Limpia el estado del control deslizante de la versión anterior.
-            # Dos selectores generan un solo rerun por cambio y son más estables
-            # con bases grandes en Streamlit Cloud.
-            st.session_state.pop("rango_semanas_evolucion", None)
+            rango_semanas_default = (
+                semanas_evolucion[0],
+                semanas_evolucion[-1],
+            )
 
-            if st.session_state.get("semana_inicio_evolucion") not in semanas_evolucion:
-                st.session_state.pop("semana_inicio_evolucion", None)
+            # Limpia las llaves usadas por versiones anteriores del control.
+            st.session_state.pop("rango_semanas_evolucion", None)
+            st.session_state.pop("semana_inicio_evolucion", None)
+            st.session_state.pop("semana_fin_evolucion", None)
+
+            def rango_evolucion_valido(valor) -> bool:
+                return (
+                    isinstance(valor, (list, tuple))
+                    and len(valor) == 2
+                    and valor[0] in semanas_evolucion
+                    and valor[1] in semanas_evolucion
+                    and valor[0] <= valor[1]
+                )
+
+            if not rango_evolucion_valido(
+                st.session_state.get("rango_semanas_evolucion_input")
+            ):
+                st.session_state["rango_semanas_evolucion_input"] = rango_semanas_default
+
+            if not rango_evolucion_valido(
+                st.session_state.get("rango_semanas_evolucion_aplicado")
+            ):
+                st.session_state["rango_semanas_evolucion_aplicado"] = rango_semanas_default
 
             with col_menu:
-                st.markdown("**Rango de semanas**")
-                semana_inicio_evolucion = st.selectbox(
-                    "Semana inicial",
-                    options=semanas_evolucion,
-                    index=0,
-                    format_func=lambda semana: f"S{int(semana)}",
-                    key="semana_inicio_evolucion",
-                )
+                # El formulario evita ejecutar nuevamente toda la aplicación
+                # mientras se arrastran los extremos del rango.
+                with st.form("form_rango_semanas_evolucion", clear_on_submit=False):
+                    rango_semanas_input = st.select_slider(
+                        "Rango de semanas",
+                        options=semanas_evolucion,
+                        format_func=lambda semana: f"S{int(semana)}",
+                        key="rango_semanas_evolucion_input",
+                    )
+                    aplicar_rango_semanas = st.form_submit_button(
+                        "Aplicar rango",
+                        use_container_width=True,
+                    )
 
-                semanas_fin_evolucion = [
-                    semana
-                    for semana in semanas_evolucion
-                    if semana >= semana_inicio_evolucion
-                ]
-                if st.session_state.get("semana_fin_evolucion") not in semanas_fin_evolucion:
-                    st.session_state.pop("semana_fin_evolucion", None)
+                if aplicar_rango_semanas:
+                    st.session_state["rango_semanas_evolucion_aplicado"] = tuple(
+                        rango_semanas_input
+                    )
 
-                semana_fin_evolucion = st.selectbox(
-                    "Semana final",
-                    options=semanas_fin_evolucion,
-                    index=len(semanas_fin_evolucion) - 1,
-                    format_func=lambda semana: f"S{int(semana)}",
-                    key="semana_fin_evolucion",
-                )
+                (
+                    semana_inicio_evolucion,
+                    semana_fin_evolucion,
+                ) = st.session_state["rango_semanas_evolucion_aplicado"]
 
                 indicador_grafica = st.selectbox(
                     "Indicador",
