@@ -6323,36 +6323,50 @@ texto_indicaciones += (
 st.markdown(
     """
     <style>
-    .st-key-ayuda_tablero { margin:-6px 0 2px !important; }
+    .st-key-ayuda_tablero {
+        position:relative !important;
+        z-index:30 !important;
+        width:clamp(430px,31vw,555px) !important;
+        max-width:calc(100% - 690px) !important;
+        margin:-73px 0 25px clamp(260px,23vw,430px) !important;
+    }
     .st-key-ayuda_tablero [data-testid="stHorizontalBlock"] { align-items:center !important; }
+    .gestion-progreso { max-width:600px !important; }
     .st-key-ayuda_tablero [data-testid="stPopover"] > button {
         width:38px !important; min-width:38px !important; height:38px !important;
         min-height:38px !important; padding:0 !important; border-radius:50% !important;
         font-size:19px !important; box-shadow:0 4px 12px rgba(8,37,103,.15) !important;
     }
+    .st-key-ayuda_tablero div.stButton > button { min-height:42px !important; }
+    @media (max-width:1100px) {
+        .st-key-ayuda_tablero {
+            width:100% !important; max-width:100% !important;
+            margin:-4px 0 4px !important;
+        }
+    }
     </style>
     """,
     unsafe_allow_html=True,
 )
+
+abrir_resumen_pais_click = False
 ayuda_tablero = st.container(key="ayuda_tablero")
 with ayuda_tablero:
-    _, col_ayuda = st.columns([20, 1], gap="small")
+    col_ayuda, col_resumen_pais, col_cambiar = st.columns([.42, 1.55, 1.25], gap="small")
     with col_ayuda:
-        with st.popover("ⓘ", use_container_width=True):
-            st.markdown(texto_indicaciones, unsafe_allow_html=True)
-
-filtros_superiores_contenedor = st.container(key="filtros_superiores")
-filtros_superiores_contenedor.__enter__()
-st.markdown(
-    """
-    <style>
-    .st-key-filtros_superiores { margin:0 0 7px !important; }
-    .st-key-filtros_superiores [data-testid="stHorizontalBlock"] { align-items:center !important; }
-    .st-key-filtros_superiores [data-testid="stPopover"] > button { min-height:46px !important; }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
+        filtros_popover = st.popover("ⓘ", use_container_width=True)
+    with col_resumen_pais:
+        abrir_resumen_pais_click = st.button(
+            "Ir a Análisis",
+            key="btn_abrir_resumen_pais",
+            use_container_width=True,
+        )
+    with col_cambiar:
+        if unidad_negocio_seleccionada is not None:
+            if st.button("Cambiar unidad", key="btn_cambiar_unidad", use_container_width=True):
+                st.session_state.pop("unidad_negocio_app", None)
+                st.query_params.clear()
+                st.rerun()
 
 
 filtros = {}
@@ -6362,22 +6376,10 @@ if unidad_negocio_seleccionada is not None:
 
 base_para_filtros = filtrar_por_diccionario(df, filtros)
 
-col_unidad_actual, col_filtros_compactos, col_espacio_acciones, col_resumen_pais, col_cambiar = st.columns([1.10, 1.05, 5.15, 1.20, 0.95])
-
-with col_unidad_actual:
-    if unidad_negocio_seleccionada is not None:
-        st.markdown(
-            f'<div class="unidad-seleccionada-pill">{html.escape(str(unidad_negocio_seleccionada))}</div>',
-            unsafe_allow_html=True
-        )
-    else:
-        st.markdown('<div class="unidad-seleccionada-pill">Todas las unidades</div>', unsafe_allow_html=True)
-
 modulo_seleccionado = "Cartera"
-with col_filtros_compactos:
-    filtros_popover = st.popover("⚙ Filtros", use_container_width=True)
-
 filtros_popover.__enter__()
+st.markdown("#### Filtros")
+st.markdown(texto_indicaciones, unsafe_allow_html=True)
 
 # Detecta el alcance de países antes de mostrar moneda.
 # Regla solicitada:
@@ -6467,31 +6469,6 @@ excluir_secundarias_cartera = False
 if "Tipo Coordinadora" in df.columns:
     st.caption("Coordinadoras: Todas")
 filtros_popover.__exit__(None, None, None)
-
-# IMPORTANTE:
-# El resumen se abre solo en el clic de este botón.
-# No se deja guardado como estado persistente, porque si el usuario lo cierra
-# con la X de Streamlit, el estado no se limpia y el resumen se vuelve a abrir
-# al presionar cualquier otro botón del tablero.
-abrir_resumen_pais_click = False
-
-with col_resumen_pais:
-    abrir_resumen_pais_click = st.button(
-        "Ir a Análisis",
-        key="btn_abrir_resumen_pais",
-        use_container_width=True
-    )
-
-
-with col_cambiar:
-    if unidad_negocio_seleccionada is not None:
-        if st.button("Cambiar unidad", key="btn_cambiar_unidad", use_container_width=True):
-            st.session_state.pop("unidad_negocio_app", None)
-            st.query_params.clear()
-            st.rerun()
-
-
-filtros_superiores_contenedor.__exit__(None, None, None)
 
 secciones_gestion_validas = [
     "kpis",
