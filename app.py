@@ -2252,6 +2252,7 @@ def crear_grafica_evolucion_fija(
 
     df_plot = df_plot.sort_values("Semana del año").reset_index(drop=True)
     df_plot["Semana texto"] = df_plot["Semana del año"].apply(lambda x: f"S{int(x)}")
+    mostrar_valores_y_variaciones = len(df_plot) <= 8
 
     es_ip = normalizar_texto_tc(indicador_grafica).strip().lower() == "ip"
 
@@ -2274,10 +2275,10 @@ def crear_grafica_evolucion_fija(
     if rango == 0:
         base = max(abs(y_max), 1)
         y_min_fijo = y_min - base * 0.10
-        y_max_fijo = y_max + base * 0.20
+        y_max_fijo = y_max + base * (0.20 if mostrar_valores_y_variaciones else 0.10)
     else:
-        y_min_fijo = y_min - rango * 0.22
-        y_max_fijo = y_max + rango * 0.45
+        y_min_fijo = y_min - rango * (0.22 if mostrar_valores_y_variaciones else 0.10)
+        y_max_fijo = y_max + rango * (0.45 if mostrar_valores_y_variaciones else 0.10)
 
     fig = go.Figure()
 
@@ -2285,7 +2286,7 @@ def crear_grafica_evolucion_fija(
         go.Scatter(
             x=df_plot["Semana texto"],
             y=df_plot[indicador_grafica],
-            mode="lines+markers",
+            mode="lines+markers" if mostrar_valores_y_variaciones else "lines",
             line=dict(color="#082567", width=3),
             marker=dict(
                 size=10,
@@ -2301,10 +2302,14 @@ def crear_grafica_evolucion_fija(
                 axis=-1
             ),
             hovertemplate=(
-                "<b>Semana:</b> %{customdata[1]:.0f}<br>"
-                f"<b>{indicador_grafica}:</b> %{{customdata[2]}}<br>"
-                "<b>Variación vs anterior:</b> %{customdata[0]}"
-                "<extra></extra>"
+                (
+                    "<b>Semana:</b> %{customdata[1]:.0f}<br>"
+                    f"<b>{indicador_grafica}:</b> %{{customdata[2]}}<br>"
+                    "<b>Variación vs anterior:</b> %{customdata[0]}"
+                    "<extra></extra>"
+                )
+                if mostrar_valores_y_variaciones
+                else "<b>Semana:</b> %{customdata[1]:.0f}<extra></extra>"
             ),
             cliponaxis=False
         )
@@ -2315,32 +2320,33 @@ def crear_grafica_evolucion_fija(
     yshift_valor = 16
     yshift_variacion = 46
 
-    for _, fila in df_plot.iterrows():
-        fig.add_annotation(
-            x=fila["Semana texto"],
-            y=fila[indicador_grafica],
-            text=fila["Texto valor"],
-            showarrow=False,
-            yshift=yshift_valor,
-            font=dict(color="#082567", size=11),
-            bgcolor="rgba(255,255,255,0)",
-            borderwidth=0,
-            borderpad=0
-        )
-
-        if pd.notna(fila["Variación vs anterior"]):
+    if mostrar_valores_y_variaciones:
+        for _, fila in df_plot.iterrows():
             fig.add_annotation(
                 x=fila["Semana texto"],
                 y=fila[indicador_grafica],
-                text=f"<b>{fila['Texto variacion']}</b>",
+                text=fila["Texto valor"],
                 showarrow=False,
-                yshift=yshift_variacion,
-                font=dict(color="#082567", size=12),
-                bgcolor="rgba(255,255,255,0.86)",
-                bordercolor="rgba(8,37,103,0.16)",
-                borderwidth=1,
-                borderpad=3
+                yshift=yshift_valor,
+                font=dict(color="#082567", size=11),
+                bgcolor="rgba(255,255,255,0)",
+                borderwidth=0,
+                borderpad=0
             )
+
+            if pd.notna(fila["Variación vs anterior"]):
+                fig.add_annotation(
+                    x=fila["Semana texto"],
+                    y=fila[indicador_grafica],
+                    text=f"<b>{fila['Texto variacion']}</b>",
+                    showarrow=False,
+                    yshift=yshift_variacion,
+                    font=dict(color="#082567", size=12),
+                    bgcolor="rgba(255,255,255,0.86)",
+                    bordercolor="rgba(8,37,103,0.16)",
+                    borderwidth=1,
+                    borderpad=3
+                )
 
     ticks_y = np.linspace(y_min_fijo, y_max_fijo, 5)
 
@@ -5907,7 +5913,7 @@ if modulo_seleccionado == "Cartera":
                 for semana in df_filtrado["Semana del año"].dropna().unique()
             )
             rango_semanas_default = (
-                semanas_evolucion[0],
+                semanas_evolucion[-8] if len(semanas_evolucion) >= 8 else semanas_evolucion[0],
                 semanas_evolucion[-1],
             )
 
@@ -5917,6 +5923,8 @@ if modulo_seleccionado == "Cartera":
             st.session_state.pop("semana_fin_evolucion", None)
             st.session_state.pop("rango_semanas_evolucion_input", None)
             st.session_state.pop("rango_semanas_evolucion_aplicado", None)
+            st.session_state.pop("rango_semanas_evolucion_input_v2", None)
+            st.session_state.pop("rango_semanas_evolucion_aplicado_v2", None)
 
             def rango_evolucion_valido(valor) -> bool:
                 return (
@@ -5928,27 +5936,27 @@ if modulo_seleccionado == "Cartera":
                 )
 
             if not rango_evolucion_valido(
-                st.session_state.get("rango_semanas_evolucion_input_v2")
+                st.session_state.get("rango_semanas_evolucion_input_v3")
             ):
                 # El valor debe pasarse explícitamente al widget como tupla para
                 # que Streamlit lo construya en modo rango (dos extremos).
-                st.session_state.pop("rango_semanas_evolucion_input_v2", None)
+                st.session_state.pop("rango_semanas_evolucion_input_v3", None)
 
             if not rango_evolucion_valido(
-                st.session_state.get("rango_semanas_evolucion_aplicado_v2")
+                st.session_state.get("rango_semanas_evolucion_aplicado_v3")
             ):
-                st.session_state["rango_semanas_evolucion_aplicado_v2"] = rango_semanas_default
+                st.session_state["rango_semanas_evolucion_aplicado_v3"] = rango_semanas_default
 
             with col_menu:
                 # El formulario evita ejecutar nuevamente toda la aplicación
                 # mientras se arrastran los extremos del rango.
-                with st.form("form_rango_semanas_evolucion_v2", clear_on_submit=False):
+                with st.form("form_rango_semanas_evolucion_v3", clear_on_submit=False):
                     rango_semanas_input = st.select_slider(
                         "Rango de semanas",
                         options=semanas_evolucion,
                         value=rango_semanas_default,
                         format_func=lambda semana: f"S{int(semana)}",
-                        key="rango_semanas_evolucion_input_v2",
+                        key="rango_semanas_evolucion_input_v3",
                     )
                     aplicar_rango_semanas = st.form_submit_button(
                         "Aplicar rango",
@@ -5956,14 +5964,14 @@ if modulo_seleccionado == "Cartera":
                     )
 
                 if aplicar_rango_semanas:
-                    st.session_state["rango_semanas_evolucion_aplicado_v2"] = tuple(
+                    st.session_state["rango_semanas_evolucion_aplicado_v3"] = tuple(
                         rango_semanas_input
                     )
 
                 (
                     semana_inicio_evolucion,
                     semana_fin_evolucion,
-                ) = st.session_state["rango_semanas_evolucion_aplicado_v2"]
+                ) = st.session_state["rango_semanas_evolucion_aplicado_v3"]
 
                 indicador_grafica = st.selectbox(
                     "Indicador",
@@ -6074,6 +6082,7 @@ if modulo_seleccionado == "Cartera":
                     texttemplate="%{text}",
                     textposition="outside",
                     automargin=True,
+                    domain=dict(x=[0.10, 0.90], y=[0.08, 0.92]),
                     marker=dict(
                         colors=[
                             colores_tipo_coordinadora.get(str(tipo), None)
@@ -6093,25 +6102,17 @@ if modulo_seleccionado == "Cartera":
         )
 
         fig_pie.update_traces(
-            textfont=dict(size=13, color="#082567", family="Arial"),
-            pull=[0.02] * len(pie)
+            textfont=dict(size=12, color="#082567", family="Arial"),
+            pull=[0] * len(pie)
         )
 
         fig_pie.update_layout(
-            height=500,
-            legend_title=None,
-            legend=dict(
-                orientation="h",
-                yanchor="bottom",
-                y=-0.18,
-                xanchor="center",
-                x=0.5,
-                font=dict(size=12, color="#082567")
-            ),
+            height=520,
+            showlegend=False,
             paper_bgcolor="rgba(255,255,255,0)",
             plot_bgcolor="rgba(255,255,255,0)",
             font=dict(color="#082567", size=13),
-            margin=dict(t=30, b=95, l=95, r=95),
+            margin=dict(t=45, b=65, l=125, r=125),
             uniformtext_minsize=11,
             uniformtext_mode="show"
         )
