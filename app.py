@@ -6271,22 +6271,6 @@ def es_unidad_latam(valor) -> bool:
 
 st.markdown(
     f"""
-    <div class="gestion-encabezado">
-        <div class="gestion-marca">
-            <span class="gestion-icono"><i></i><i></i><i></i></span>
-            <div>
-                <div class="gestion-titulo">Gestión</div>
-                <div class="gestion-unidad">{html.escape(str(unidad_negocio_seleccionada or 'Todas las unidades'))}</div>
-            </div>
-        </div>
-        <div class="gestion-progreso">
-            <div class="gestion-paso completado"><span>✓</span><b>1. Seleccionar unidad</b></div>
-            <div class="gestion-trazo completado"></div>
-            <div class="gestion-paso activo"><span>2</span><b>2. Gestión</b></div>
-            <div class="gestion-trazo"></div>
-            <div class="gestion-paso"><span>3</span><b>3. Análisis</b></div>
-        </div>
-    </div>
     <style>
     .gestion-encabezado {{
         display:flex; align-items:center; justify-content:space-between; gap:24px;
@@ -6406,23 +6390,60 @@ st.markdown(
 )
 
 abrir_resumen_pais_click = False
-ayuda_tablero = st.container(key="ayuda_tablero")
-with ayuda_tablero:
-    col_ayuda, col_resumen_pais, col_cambiar = st.columns([.36, 1.35, 1.18], gap="small")
-    with col_ayuda:
-        filtros_popover = st.popover("ⓘ", use_container_width=True)
-    with col_resumen_pais:
-        abrir_resumen_pais_click = st.button(
-            "Ir a Análisis",
-            key="btn_abrir_resumen_pais",
-            use_container_width=True,
+barra_gestion = st.container(key="gestion_header_barra")
+with barra_gestion:
+    col_marca_barra, col_acciones_barra, col_pasos_barra = st.columns(
+        [1, 1, 1],
+        gap="small",
+    )
+
+    with col_marca_barra:
+        st.markdown(
+            f"""
+            <div class="gestion-marca">
+                <span class="gestion-icono"><i></i><i></i><i></i></span>
+                <div>
+                    <div class="gestion-titulo">Gestión</div>
+                    <div class="gestion-unidad">{html.escape(str(unidad_negocio_seleccionada or 'Todas las unidades'))}</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
-    with col_cambiar:
-        if unidad_negocio_seleccionada is not None:
-            if st.button("Cambiar unidad", key="btn_cambiar_unidad", use_container_width=True):
-                st.session_state.pop("unidad_negocio_app", None)
-                st.query_params.clear()
-                st.rerun()
+
+    with col_acciones_barra:
+        col_ayuda, col_resumen_pais, col_cambiar = st.columns(
+            [.24, 1, 1],
+            gap="small",
+        )
+        with col_ayuda:
+            filtros_popover = st.popover("ⓘ", use_container_width=True)
+        with col_resumen_pais:
+            abrir_resumen_pais_click = st.button(
+                "Ir a Análisis",
+                key="btn_abrir_resumen_pais",
+                use_container_width=True,
+            )
+        with col_cambiar:
+            if unidad_negocio_seleccionada is not None:
+                if st.button("Cambiar unidad", key="btn_cambiar_unidad", use_container_width=True):
+                    st.session_state.pop("unidad_negocio_app", None)
+                    st.query_params.clear()
+                    st.rerun()
+
+    with col_pasos_barra:
+        st.markdown(
+            """
+            <div class="gestion-progreso">
+                <div class="gestion-paso completado"><span>✓</span><b>1. Seleccionar unidad</b></div>
+                <div class="gestion-trazo completado"></div>
+                <div class="gestion-paso activo"><span>2</span><b>2. Gestión</b></div>
+                <div class="gestion-trazo"></div>
+                <div class="gestion-paso"><span>3</span><b>3. Análisis</b></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
 
 filtros = {}
@@ -7703,7 +7724,10 @@ if modulo_seleccionado == "Cartera":
         '<div class="gestion-seccion-cabecera"><span>4</span>Movimientos de coordinadoras</div>',
         unsafe_allow_html=True,
     )
-    st.subheader("Matriz de desplazamiento de coordinadoras por categoría")
+    st.markdown(
+        '<div class="movimientos-subtitulo">Matriz de desplazamiento por categoría</div>',
+        unsafe_allow_html=True,
+    )
 
     if "coordinadora_id" not in df_filtrado_original.columns:
         st.warning(
@@ -7764,13 +7788,6 @@ if modulo_seleccionado == "Cartera":
                 total_destino = movimientos[movimientos["Semana actual"] != "Baja"][llave_matriz].nunique()
                 total_nuevas = movimientos[movimientos["Semana anterior"] == "Nueva"][llave_matriz].nunique()
                 total_bajas = movimientos[movimientos["Semana actual"] == "Baja"][llave_matriz].nunique()
-
-                st.caption(
-                    f"Lectura: las filas muestran la categoría en la semana {semana_origen}; "
-                    f"las columnas muestran la categoría en la semana {semana_destino}. "
-                    "Los valores verdes son mejoras de categoría, los rojos son retrocesos, "
-                    "la diagonal muestra permanencia, la fila Nueva muestra altas y la columna Baja muestra salidas."
-                )
 
                 col_m1, col_m2, col_m3, col_m4 = st.columns(4)
 
@@ -9889,6 +9906,93 @@ st.markdown(
         box-sizing:border-box !important;
     }
 
+    /* Barra real en una sola fila: marca, acciones centradas y avance. */
+    .st-key-gestion_header_barra {
+        width:100% !important;
+        max-width:100% !important;
+        margin:0 0 3px !important;
+        padding:8px 14px !important;
+        box-sizing:border-box !important;
+        background:rgba(255,255,255,.97) !important;
+        border:1px solid #dbe3ee !important;
+        border-radius:15px !important;
+        box-shadow:0 7px 20px rgba(15,23,42,.065) !important;
+    }
+
+    .st-key-gestion_header_barra > [data-testid="stVerticalBlock"] {
+        gap:0 !important;
+    }
+
+    .st-key-gestion_header_barra [data-testid="stHorizontalBlock"] {
+        align-items:center !important;
+    }
+
+    [data-testid="stVerticalBlock"]:has(> .st-key-gestion_header_barra) {
+        gap:.32rem !important;
+    }
+
+    .st-key-gestion_header_barra .gestion-marca {
+        min-width:0 !important;
+        gap:10px !important;
+    }
+
+    .st-key-gestion_header_barra .gestion-titulo {
+        font-size:21px !important;
+    }
+
+    .st-key-gestion_header_barra .gestion-unidad {
+        margin-top:3px !important;
+        font-size:10.5px !important;
+    }
+
+    .st-key-gestion_header_barra .gestion-progreso {
+        width:100% !important;
+        max-width:none !important;
+        justify-content:flex-end !important;
+    }
+
+    .st-key-gestion_header_barra .gestion-paso {
+        gap:6px !important;
+        font-size:10.5px !important;
+    }
+
+    .st-key-gestion_header_barra .gestion-paso span {
+        width:26px !important;
+        min-width:26px !important;
+        height:26px !important;
+        font-size:11px !important;
+    }
+
+    .st-key-gestion_header_barra .gestion-trazo {
+        width:32px !important;
+        margin:0 7px !important;
+    }
+
+    .stApp .st-key-gestion_header_barra button {
+        min-height:34px !important;
+        height:34px !important;
+        padding:0 10px !important;
+        border-radius:9px !important;
+        font-size:10.5px !important;
+        box-shadow:0 2px 6px rgba(15,23,42,.07) !important;
+    }
+
+    .stApp .st-key-gestion_header_barra button * {
+        font-size:10.5px !important;
+        line-height:1 !important;
+    }
+
+    .stApp .st-key-gestion_header_barra [data-testid="stPopover"] > button {
+        width:36px !important;
+        min-width:36px !important;
+        max-width:36px !important;
+        padding:0 !important;
+        background:#eef5fd !important;
+        color:#082567 !important;
+        -webkit-text-fill-color:#082567 !important;
+        border:1px solid #b9cee7 !important;
+    }
+
     @media (min-width:1101px) {
         .st-key-ayuda_tablero {
             position:relative !important;
@@ -10207,6 +10311,15 @@ st.markdown(
         margin:0 !important;
         padding:0 !important;
     }
+    .st-key-gestion_slide_movimientos .movimientos-subtitulo {
+        margin:0 0 2px !important;
+        color:#082567 !important;
+        -webkit-text-fill-color:#082567 !important;
+        font-size:clamp(16px,1.2vw,21px) !important;
+        font-weight:900 !important;
+        line-height:1.05 !important;
+        letter-spacing:-.01em !important;
+    }
     .st-key-gestion_slide_movimientos [data-testid="stWidgetLabel"] p,
     .st-key-gestion_slide_movimientos [data-testid="stCaptionContainer"] p {
         font-size:11px !important;
@@ -10250,6 +10363,10 @@ st.markdown(
     .st-key-gestion_slide_movimientos .cuadro-marca-title {
         margin-top:4px !important;
         padding:6px 8px !important;
+        min-height:30px !important;
+        display:flex !important;
+        align-items:center !important;
+        box-sizing:border-box !important;
         border-radius:9px 9px 0 0 !important;
         font-size:11px !important;
         line-height:1.15 !important;
@@ -10265,6 +10382,40 @@ st.markdown(
     .st-key-gestion_slide_movimientos div[data-testid="stDownloadButton"] > button * {
         font-size:10px !important;
         line-height:1 !important;
+    }
+    .st-key-gestion_slide_movimientos .comentario-amplio {
+        width:min(82%,1180px) !important;
+        margin:3px auto 0 !important;
+        padding:8px 14px !important;
+        border-left-width:5px !important;
+        border-radius:12px !important;
+        box-shadow:0 4px 12px rgba(15,23,42,.08) !important;
+    }
+    .st-key-gestion_slide_movimientos .comentario-amplio-texto {
+        font-size:clamp(10px,.8vw,12px) !important;
+        line-height:1.35 !important;
+        font-weight:750 !important;
+    }
+
+    @media (max-width:1450px) and (min-width:1101px) {
+        .st-key-gestion_header_barra .gestion-paso {
+            gap:4px !important;
+            font-size:9px !important;
+        }
+        .st-key-gestion_header_barra .gestion-paso span {
+            width:23px !important;
+            min-width:23px !important;
+            height:23px !important;
+            font-size:9px !important;
+        }
+        .st-key-gestion_header_barra .gestion-trazo {
+            width:20px !important;
+            margin:0 4px !important;
+        }
+        .stApp .st-key-gestion_header_barra button,
+        .stApp .st-key-gestion_header_barra button * {
+            font-size:9.5px !important;
+        }
     }
 
     @media (max-width:1300px) and (min-width:901px) {
