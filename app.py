@@ -6301,7 +6301,7 @@ st.markdown(
 )
 
 texto_indicaciones = (
-    "El botón <b>Filtros</b> contiene Moneda, Marca, País y el alcance de coordinadoras. "
+    "El botón <b>ⓘ</b> contiene Moneda, Marca, País y el alcance de coordinadoras. "
     "Estos filtros ajustan los KPIs, tablas, movimientos, análisis de coordinadoras y las dos "
     "diapositivas de Cobranza. La tarjeta <b>Cobranza · Barras</b> muestra el cumplimiento semanal "
     "y <b>Cobranza · Líneas</b> compara cuota contra recuperación. "
@@ -9825,8 +9825,11 @@ st.markdown(
     """
     <style>
     .gestion-encabezado {
-        min-height:84px !important;
-        margin-bottom:10px !important;
+        position:relative !important;
+        min-height:78px !important;
+        padding-top:11px !important;
+        padding-bottom:11px !important;
+        margin-bottom:0 !important;
         box-sizing:border-box !important;
     }
 
@@ -9834,96 +9837,165 @@ st.markdown(
         .st-key-ayuda_tablero {
             position:relative !important;
             z-index:40 !important;
-            width:clamp(475px,33vw,600px) !important;
-            max-width:600px !important;
+            width:clamp(400px,25vw,450px) !important;
+            max-width:450px !important;
             height:0 !important;
             min-height:0 !important;
             overflow:visible !important;
-            margin:0 0 0 clamp(275px,23vw,430px) !important;
+            margin:0 auto !important;
             padding:0 !important;
-            transform:translateY(-68px) !important;
+            transform:translateY(-59px) !important;
         }
         .st-key-ayuda_tablero > div,
         .st-key-ayuda_tablero > div > div {
             overflow:visible !important;
         }
+
+        /* El contenedor de acciones no reserva otra fila debajo del encabezado. */
+        [data-testid="stElementContainer"]:has(> .st-key-ayuda_tablero),
+        [data-testid="stElementContainer"]:has(.st-key-ayuda_tablero) {
+            min-height:0 !important;
+            height:0 !important;
+            margin:0 !important;
+            padding:0 !important;
+            overflow:visible !important;
+        }
     }
 
     .st-key-ayuda_tablero [data-testid="stHorizontalBlock"] {
-        gap:9px !important;
+        gap:7px !important;
         align-items:center !important;
+        justify-content:center !important;
     }
 
+    /* Base común: botones ligeros, integrados con la tarjeta blanca. */
+    .stApp .st-key-ayuda_tablero button {
+        height:36px !important;
+        min-height:36px !important;
+        padding:0 13px !important;
+        border-radius:9px !important;
+        background:linear-gradient(180deg,#ffffff 0%,#f3f7fc 100%) !important;
+        color:#082567 !important;
+        -webkit-text-fill-color:#082567 !important;
+        border:1px solid #cfdae8 !important;
+        box-shadow:0 2px 6px rgba(15,23,42,.07) !important;
+        font-size:11.5px !important;
+        font-weight:850 !important;
+        letter-spacing:0 !important;
+    }
+    .stApp .st-key-ayuda_tablero button * {
+        color:#082567 !important;
+        -webkit-text-fill-color:#082567 !important;
+        font-size:11.5px !important;
+        font-weight:850 !important;
+    }
+
+    /* Información: control corto con la misma geometría del grupo. */
+    .stApp .st-key-ayuda_tablero [data-testid="stHorizontalBlock"] > div:nth-child(1) button,
     .stApp .st-key-ayuda_tablero [data-testid="stPopover"] > button {
-        width:40px !important;
-        min-width:40px !important;
-        height:40px !important;
-        min-height:40px !important;
+        width:38px !important;
+        min-width:38px !important;
+        max-width:38px !important;
         padding:0 !important;
-        border-radius:50% !important;
         background:#eef5fd !important;
-        color:#082567 !important;
-        -webkit-text-fill-color:#082567 !important;
-        border:1px solid #bfd3eb !important;
-        box-shadow:none !important;
-    }
-    .stApp .st-key-ayuda_tablero [data-testid="stPopover"] > button * {
-        color:#082567 !important;
-        -webkit-text-fill-color:#082567 !important;
+        border-color:#b9cee7 !important;
+        font-size:17px !important;
     }
 
-    .stApp .st-key-btn_abrir_resumen_pais button {
-        height:40px !important;
-        min-height:40px !important;
-        padding:0 18px !important;
-        border-radius:10px !important;
-        background:#082567 !important;
-        color:#ffffff !important;
-        -webkit-text-fill-color:#ffffff !important;
-        border:1px solid #082567 !important;
-        box-shadow:0 4px 10px rgba(8,37,103,.16) !important;
-        font-size:12px !important;
-    }
-    .stApp .st-key-btn_abrir_resumen_pais button * {
-        color:#ffffff !important;
-        -webkit-text-fill-color:#ffffff !important;
-        font-size:12px !important;
+    /* Acción principal: marfil con acento dorado, sin bloque azul pesado. */
+    .stApp .st-key-ayuda_tablero [data-testid="stHorizontalBlock"] > div:nth-child(2) button,
+    .stApp div[class*="st-key-btn_abrir_resumen_pais"] button {
+        background:linear-gradient(180deg,#fffef8 0%,#fff8d9 100%) !important;
+        border-color:#e2c44b !important;
+        box-shadow:inset 3px 0 0 #e7c42d,0 2px 6px rgba(15,23,42,.07) !important;
     }
 
-    .stApp .st-key-btn_cambiar_unidad button {
-        height:40px !important;
-        min-height:40px !important;
-        padding:0 16px !important;
-        border-radius:10px !important;
-        background:#ffffff !important;
-        color:#082567 !important;
-        -webkit-text-fill-color:#082567 !important;
-        border:1px solid #9db7d8 !important;
-        box-shadow:none !important;
-        font-size:12px !important;
+    /* Acción secundaria: azul muy claro, coherente con el paso completado. */
+    .stApp .st-key-ayuda_tablero [data-testid="stHorizontalBlock"] > div:nth-child(3) button,
+    .stApp div[class*="st-key-btn_cambiar_unidad"] button {
+        background:linear-gradient(180deg,#ffffff 0%,#edf4fc 100%) !important;
+        border-color:#b9cee7 !important;
     }
-    .stApp .st-key-btn_cambiar_unidad button * {
-        color:#082567 !important;
-        -webkit-text-fill-color:#082567 !important;
-        font-size:12px !important;
+
+    .stApp .st-key-ayuda_tablero button:hover {
+        transform:translateY(-1px) !important;
+        border-color:#8eacd0 !important;
+        box-shadow:0 4px 9px rgba(15,23,42,.10) !important;
     }
-    .stApp .st-key-btn_cambiar_unidad button:hover {
-        background:#eef5fd !important;
-        border-color:#0b70c9 !important;
+
+    /* Ritmo compacto y uniforme: encabezado -> indicador -> contenido. */
+    [data-testid="stElementContainer"]:has(.gestion-encabezado) {
+        margin-bottom:0 !important;
+        padding-bottom:0 !important;
     }
 
     [class*="st-key-gestion_slide_"] {
+        margin:0 0 4px !important;
+        padding:9px 16px 12px !important;
+        border-radius:12px !important;
+    }
+
+    [class*="st-key-gestion_slide_"] > [data-testid="stVerticalBlock"],
+    [class*="st-key-gestion_slide_"] [data-testid="stVerticalBlock"] {
+        gap:.38rem !important;
+    }
+
+    [class*="st-key-gestion_slide_"] .gestion-seccion-cabecera {
+        min-height:36px !important;
+        margin:0 0 3px !important;
+        padding:6px 10px !important;
+        gap:8px !important;
+        border-left-width:4px !important;
+        border-radius:0 9px 9px 0 !important;
+        font-size:17px !important;
+        line-height:1.1 !important;
+    }
+
+    [class*="st-key-gestion_slide_"] .gestion-seccion-cabecera span {
+        width:25px !important;
+        min-width:25px !important;
+        height:25px !important;
+        font-size:11px !important;
+    }
+
+    [class*="st-key-gestion_slide_"] h1,
+    [class*="st-key-gestion_slide_"] h2,
+    [class*="st-key-gestion_slide_"] h3 {
         margin-top:0 !important;
+        margin-bottom:.2rem !important;
+        padding-top:0 !important;
+    }
+
+    [data-testid="stElementContainer"]:has(.gestion-carrusel-real) {
+        margin-top:0 !important;
+        padding-top:0 !important;
+    }
+
+    .gestion-carrusel-real {
+        gap:8px !important;
+        margin:0 !important;
+        padding:2px 1px 5px !important;
+    }
+
+    .gestion-miniatura-real {
+        height:116px !important;
     }
 
     @media (max-width:1100px) {
+        .gestion-encabezado {
+            min-height:0 !important;
+            margin-bottom:6px !important;
+        }
         .st-key-ayuda_tablero {
             width:100% !important;
             max-width:100% !important;
             height:auto !important;
             min-height:0 !important;
-            margin:0 0 8px !important;
+            margin:0 0 5px !important;
             transform:none !important;
+        }
+        [class*="st-key-gestion_slide_"] {
+            padding:8px 10px 11px !important;
         }
     }
     </style>
