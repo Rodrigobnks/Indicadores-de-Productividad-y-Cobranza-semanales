@@ -30,8 +30,15 @@ try:
 except NameError:
     CARPETA_APP = Path.cwd()
 
-# Cartera continúa leyéndose desde Base.xlsx.
-RUTA_DEFAULT = str(CARPETA_APP / "Base.xlsx")
+# Cartera se consolida desde los Excel guardados en esta carpeta. La variable
+# de entorno permite cambiar la ubicación sin editar el código.
+RUTA_CARTERA_CONCENTRADOS = Path(
+    os.environ.get(
+        "CARPETA_CARTERA_CONCENTRADOS",
+        str(CARPETA_APP / "Concentrados"),
+    )
+)
+RUTA_DEFAULT = str(RUTA_CARTERA_CONCENTRADOS)
 
 # Los Parquet semanales están en la carpeta Cobranza del repositorio.
 RUTA_COBRANZA_PARQUET = CARPETA_APP / "Cobranza"
@@ -58,7 +65,7 @@ MAX_SEMANAS_VISUALES_COBRANZA = 20
 NOMBRE_IMAGEN_FONDO = "ChatGPT Image 19 may 2026, 11_58_09 a.m."
 
 # Oculta la tarjeta superior de carga de archivo y el expander de control de datos.
-# El tablero seguirá usando RUTA_DEFAULT como archivo base.
+# El tablero seguirá usando RUTA_DEFAULT como origen de Cartera.
 MOSTRAR_SECCION_ARCHIVO = False
 MOSTRAR_CONTROL_DATOS = False
 
@@ -1588,6 +1595,212 @@ def cargar_cobranza_desde_parquet(ruta_carpeta: str, firma_archivos: tuple) -> p
     cobranza.attrs["ruta_origen"] = ruta_carpeta
     cobranza.attrs["archivos_cargados"] = len(partes)
     return cobranza
+
+
+COLUMNAS_ORIGEN_CARTERA_CONCENTRADOS = {
+    "Semana",
+    "FECHA",
+    "Unidad de negocio",
+    "Unidad de Negocio",
+    "Ruta",
+    "id_y_localidad",
+    "Clientes Totales",
+    "Clientes al corriente",
+    "Faltas",
+    "Cartera Total",
+    "Cartera sin atrasos",
+    "Nunca Abonada",
+    "Coord Totales",
+    "Coord prod",
+    "Coord en desarrollo",
+    "Coord impro",
+    "País",
+}
+
+
+def firma_archivos_cartera_concentrados(ruta_carpeta: str) -> tuple:
+    """Firma los Excel de Cartera para invalidar la caché al cambiarlos."""
+    carpeta = Path(ruta_carpeta)
+    if not carpeta.is_dir():
+        raise FileNotFoundError(
+            "No encontré la carpeta de concentrados de Cartera:\n"
+            f"{carpeta}"
+        )
+
+    archivos = sorted(
+        ruta
+        for ruta in carpeta.iterdir()
+        if ruta.is_file()
+        and not ruta.name.startswith("~$")
+        and ruta.suffix.lower() in {".xlsx", ".xlsm", ".xlsb", ".xls"}
+    )
+    if not archivos:
+        raise FileNotFoundError(
+            f"No encontré archivos Excel de Cartera en:\n{carpeta}"
+        )
+
+    return tuple(
+        (
+            str(ruta),
+            ruta.stat().st_size,
+            ruta.stat().st_mtime_ns,
+        )
+        for ruta in archivos
+    )
+
+
+def _detectar_hoja_cartera_concentrado(excel: pd.ExcelFile) -> tuple[str, list[str]]:
+    """Localiza la hoja de detalle por sus encabezados, sin depender del nombre."""
+    requeridas = {"Semana", "Clientes Totales", "Cartera Total", "Ruta"}
+
+    for hoja in excel.sheet_names:
+        try:
+            encabezados = pd.read_excel(excel, sheet_name=hoja, nrows=0)
+        except Exception:
+            continue
+
+        columnas = [str(columna).strip() for columna in encabezados.columns]
+        if requeridas.issubset(set(columnas)):
+            return hoja, columnas
+
+    raise ValueError(
+        "No encontré una hoja de detalle de Cartera. Se requieren al menos "
+        "las columnas Semana, Clientes Totales, Cartera Total y Ruta."
+    )
+
+
+def _preparar_cartera_concentrado(parte: pd.DataFrame, archivo: str) -> pd.DataFrame:
+    """Adapta el formato de los concentrados al esquema usado por el tablero."""
+    parte = parte.copy()
+    parte.columns = [str(columna).strip() for columna in parte.columns]
+    parte = parte.rename(
+        columns={
+            "Semana": "Semana del año",
+            "FECHA": "Fecha",
+            # En estos libros, la variante con 'negocio' en minúscula es la marca.
+            "Unidad de negocio": "Marca",
+            "id_y_localidad": "coordinadora_id",
+            "Cartera sin atrasos": "Saldo Cartera",
+            "Nunca Abonada": "Nunca Abonados",
+        }
+    )
+
+    if "Marca" in parte.columns:
+        parte["Marca"] = (
+            parte["Marca"]
+            .astype("string")
+            .str.strip()
+            .str.upper()
+            .replace({"": pd.NA, "-": pd.NA})
+        )
+
+    if "País" in parte.columns:
+        parte["País"] = parte["País"].replace(
+            {"Peru": "Perú", "PERU": "Perú", "Mexico": "México", "MEXICO": "México"}
+        )
+
+    if "Semana del año" in parte.columns:
+        parte["Semana del año"] = pd.to_numeric(
+            parte["Semana del año"]
+            .astype("string")
+            .str.extract(r"(\d{1,2})", expand=False),
+            errors="coerce",
+        ).astype("Int64")
+
+    if "Fecha" in parte.columns:
+        fechas = pd.to_datetime(parte["Fecha"], errors="coerce")
+        parte["Año"] = fechas.dt.year.astype("Int64")
+
+    columnas_numericas = [
+        "Clientes Totales",
+        "Clientes al corriente",
+        "Faltas",
+        "Cartera Total",
+        "Saldo Cartera",
+        "Nunca Abonados",
+        "Coord Totales",
+        "Coord prod",
+        "Coord en desarrollo",
+        "Coord impro",
+    ]
+    for columna in columnas_numericas:
+        if columna in parte.columns:
+            parte[columna] = pd.to_numeric(parte[columna], errors="coerce").fillna(0)
+
+    if {"Cartera Total", "Saldo Cartera"}.issubset(parte.columns):
+        parte["Saldo en atraso"] = (
+            parte["Cartera Total"] - parte["Saldo Cartera"]
+        ).clip(lower=0)
+
+    # Cada fila del concentrado representa una coordinadora/localidad. Las
+    # banderas indican su clasificación en la semana correspondiente.
+    if "Tipo Coordinadora" not in parte.columns:
+        productiva = parte.get("Coord prod", pd.Series(0, index=parte.index)).gt(0)
+        desarrollo = parte.get("Coord en desarrollo", pd.Series(0, index=parte.index)).gt(0)
+        improductiva = parte.get("Coord impro", pd.Series(0, index=parte.index)).gt(0)
+        parte["Tipo Coordinadora"] = np.select(
+            [productiva, desarrollo, improductiva],
+            ["Productiva", "En Desarrollo", "Improductiva"],
+            default="Secundaria",
+        )
+
+    parte = parte.drop(columns=["Fecha"], errors="ignore")
+    return parte
+
+
+@st.cache_data(show_spinner=False)
+def cargar_cartera_desde_concentrados(
+    ruta_carpeta: str,
+    firma_archivos: tuple,
+) -> pd.DataFrame:
+    """Combina automáticamente las hojas de detalle de todos los concentrados."""
+    partes = []
+    errores = []
+    hojas_cargadas = []
+
+    for ruta_texto, _tamano, _fecha_modificacion in firma_archivos:
+        ruta = Path(ruta_texto)
+        try:
+            with pd.ExcelFile(ruta) as excel:
+                hoja, columnas = _detectar_hoja_cartera_concentrado(excel)
+                columnas_utiles = [
+                    columna
+                    for columna in columnas
+                    if columna in COLUMNAS_ORIGEN_CARTERA_CONCENTRADOS
+                ]
+                parte = pd.read_excel(
+                    excel,
+                    sheet_name=hoja,
+                    usecols=columnas_utiles,
+                )
+        except Exception as exc:
+            errores.append(f"{ruta.name}: {exc}")
+            continue
+
+        if parte is None or parte.empty:
+            errores.append(f"{ruta.name}: la hoja {hoja} no contiene registros")
+            continue
+
+        parte = _preparar_cartera_concentrado(parte, ruta.name)
+        partes.append(parte)
+        hojas_cargadas.append(f"{ruta.name} [{hoja}]")
+
+    if errores:
+        detalle = "\n".join(f"- {mensaje}" for mensaje in errores)
+        raise RuntimeError(
+            "No fue posible cargar todos los concentrados de Cartera:\n"
+            f"{detalle}"
+        )
+
+    if not partes:
+        raise ValueError("Los concentrados no contienen registros de Cartera utilizables.")
+
+    cartera = pd.concat(partes, ignore_index=True, sort=False)
+    cartera = limpiar_datos(cartera)
+    cartera.attrs["ruta_origen"] = ruta_carpeta
+    cartera.attrs["archivos_cargados"] = len(partes)
+    cartera.attrs["hojas_cargadas"] = hojas_cargadas
+    return cartera
 
 
 @st.cache_data(show_spinner=False)
@@ -4698,7 +4911,7 @@ if MOSTRAR_SECCION_ARCHIVO:
     col_ruta_archivo, col_upload_archivo = st.columns([2.2, 1])
 
     with col_ruta_archivo:
-        ruta_local = st.text_input("Ruta local del archivo", value=RUTA_DEFAULT)
+        ruta_local = st.text_input("Ruta local del archivo o carpeta", value=RUTA_DEFAULT)
 
     with col_upload_archivo:
         archivo_subido = st.file_uploader(
@@ -4712,17 +4925,30 @@ else:
     archivo_subido = None
 
 try:
-    # Cartera conserva su origen actual. La hoja Cobranza de Base.xlsx se
-    # ignora porque el histórico se toma de data/cobranza en el repositorio.
-    df, _df_cobranza_excel = cargar_archivo(ruta_local, archivo_subido)
+    if archivo_subido is None and Path(ruta_local).is_dir():
+        with st.spinner("Cargando concentrados de Cartera..."):
+            firma_cartera = firma_archivos_cartera_concentrados(ruta_local)
+            df = cargar_cartera_desde_concentrados(ruta_local, firma_cartera)
+        _df_cobranza_excel = None
+    else:
+        # Se conserva la carga manual de un CSV/Excel para pruebas puntuales.
+        df, _df_cobranza_excel = cargar_archivo(ruta_local, archivo_subido)
+except Exception as e:
+    st.error(str(e))
+    st.stop()
+
+# Cobranza es independiente. Si sus Parquet no están disponibles, Cartera
+# sigue funcionando y la vista Cobranza muestra el motivo.
+error_cobranza = None
+try:
     firma_cobranza = firma_archivos_cobranza_parquet(str(RUTA_COBRANZA_PARQUET))
     df_cobranza = cargar_cobranza_desde_parquet(
         str(RUTA_COBRANZA_PARQUET),
         firma_cobranza,
     )
 except Exception as e:
-    st.error(str(e))
-    st.stop()
+    df_cobranza = None
+    error_cobranza = str(e)
 
 
 # ============================================================
@@ -6156,9 +6382,11 @@ else:
 
     if df_cobranza is None:
         st.info(
-            "No se encontró una hoja llamada 'Cobranza'. "
-            "Usa un archivo Excel con hojas 'Cartera' y 'Cobranza'."
+            "La información de Cobranza no está disponible, pero la vista "
+            "Cartera continúa funcionando con los concentrados."
         )
+        if error_cobranza:
+            st.caption(error_cobranza)
 
     else:
         df_cobranza_preparada, col_cuota, col_pago, col_cump, col_mejor, col_peor = preparar_cobranza(df_cobranza)
