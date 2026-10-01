@@ -5097,175 +5097,362 @@ if unidades_negocio:
         unidad_guardada = None
 
     if unidad_guardada is None:
-        col_vista_tel, col_vista_tel_espacio = st.columns([0.22, 0.78])
-        with col_vista_tel:
-            texto_boton_tel = "Vista normal" if st.session_state.get("vista_telefono", False) else "Vista para teléfono"
-            if st.button(texto_boton_tel, key="btn_vista_telefono_inicio", use_container_width=True):
-                st.session_state["vista_telefono"] = not st.session_state.get("vista_telefono", False)
-                st.rerun()
+        # La pantalla inicial funciona como el primer paso de la secuencia:
+        # alcance -> análisis -> presentación. Los filtros elegidos aquí se
+        # transfieren al tablero al pulsar "Ver resumen semanal".
+        unidad_inicio = st.session_state.get("unidad_negocio_inicio")
+        if unidad_inicio not in unidades_negocio:
+            unidad_inicio = next(
+                (
+                    unidad
+                    for unidad in unidades_negocio
+                    if normalizar_texto_tc(unidad) == "PRESICO"
+                ),
+                unidades_negocio[0],
+            )
+            st.session_state["unidad_negocio_inicio"] = unidad_inicio
 
         st.markdown(
             """
-            <div class="landing-wrap">
-                <div class="landing-title">Indicadores de Productividad y Cobranza</div>
-                <div class="landing-subtitle">Semanal</div>
-                <div class="landing-subtitle" style="max-width: 920px; margin-left:auto; margin-right:auto; line-height:1.45;">
-                    En esta página puedes consultar la evolución semanal de cartera y cobranza, revisar KPIs, comparar contra la semana anterior, identificar mejores y peores semanas, analizar movimientos de coordinadoras y generar un resumen ejecutivo por país o unidad de negocio.
-                </div>
+            <div class="inicio-hero">
+                <div class="inicio-kicker">REPORTE EJECUTIVO SEMANAL</div>
+                <div class="inicio-title">Indicadores de Productividad y Cobranza</div>
+                <div class="inicio-subtitle">Selecciona el alcance del análisis y el periodo que deseas consultar.</div>
             </div>
+            <div class="inicio-stepper">
+                <div class="inicio-step activo"><span>1</span><b>Seleccionar alcance</b></div>
+                <div class="inicio-linea"></div>
+                <div class="inicio-step"><span>2</span><b>Analizar resultados</b></div>
+                <div class="inicio-linea"></div>
+                <div class="inicio-step"><span>3</span><b>Generar presentación</b></div>
+            </div>
+            <div class="inicio-section-title">1. Elige la unidad de negocio</div>
             """,
-            unsafe_allow_html=True
+            unsafe_allow_html=True,
         )
 
         logos_unidad = {
             "PRESICO": "Logo.jpg",
             "PRESICO LATAM": "Presico sin fondo LATAM.jpg",
         }
+        mapas_unidad = {
+            "PRESICO": "mapa_mexico.png",
+            "PRESICO LATAM": "mapa_latam.png",
+        }
 
-        cols_unidades = st.columns(min(len(unidades_negocio), 4))
-
+        cols_unidades = st.columns(min(len(unidades_negocio), 2), gap="large")
         for idx, unidad in enumerate(unidades_negocio):
             unidad_texto = str(unidad).strip()
             unidad_key = normalizar_texto_tc(unidad_texto)
             nombre_logo = logos_unidad.get(unidad_key)
+            nombre_mapa = mapas_unidad.get(unidad_key)
+            seleccionado = unidad_texto == unidad_inicio
 
-            if nombre_logo:
-                logo_html = imagen_logo_html(nombre_logo)
-            else:
-                logo_html = '<div class="unidad-logo-placeholder">🏢</div>'
+            mapa_html = (
+                imagen_logo_html(nombre_mapa, "mapa-silueta mapa-latam" if "LATAM" in unidad_key else "mapa-silueta mapa-mexico")
+                if nombre_mapa
+                else '<div class="mapa-placeholder">Mapa</div>'
+            )
+            logo_html = (
+                imagen_logo_html(nombre_logo, "mapa-logo-overlay mapa-logo-latam" if "LATAM" in unidad_key else "mapa-logo-overlay mapa-logo-mexico")
+                if nombre_logo
+                else '<div class="mapa-logo-texto">PRÉSICO</div>'
+            )
+            alcance = "México" if unidad_key == "PRESICO" else "LATAM"
+            detalle = "Operación nacional" if unidad_key == "PRESICO" else "Operación por país"
 
             with cols_unidades[idx % len(cols_unidades)]:
                 st.markdown(
                     f"""
-                    <div class="unidad-card">
-                        {logo_html}
-                        <div class="unidad-name">{html.escape(unidad_texto)}</div>
-                        <div class="unidad-help">Entrar al tablero</div>
+                    <div class="mapa-card {'seleccionada' if seleccionado else ''}">
+                        <div class="mapa-check">{'✓' if seleccionado else ''}</div>
+                        <div class="mapa-visual">
+                            {mapa_html}
+                            <div class="mapa-logo-contenedor">{logo_html}</div>
+                        </div>
+                        <div class="mapa-card-title">{html.escape(alcance)}</div>
+                        <div class="mapa-card-subtitle">{html.escape(detalle)}</div>
                     </div>
                     """,
-                    unsafe_allow_html=True
+                    unsafe_allow_html=True,
                 )
-                if st.button(f"Entrar a {unidad_texto}", key=f"btn_unidad_{idx}", use_container_width=True):
-                    st.session_state["unidad_negocio_app"] = unidad_texto
+                if st.button(
+                    "Seleccionado" if seleccionado else f"Seleccionar {alcance}",
+                    key=f"btn_unidad_inicio_{idx}",
+                    use_container_width=True,
+                    disabled=seleccionado,
+                ):
+                    st.session_state["unidad_negocio_inicio"] = unidad_texto
+                    for clave in ["inicio_pais", "inicio_marca", "inicio_moneda", "inicio_rango_semanas"]:
+                        st.session_state.pop(clave, None)
                     st.rerun()
 
-        # ============================================================
-        # AJUSTE PANTALLA INICIAL: MODO CLARO FORZADO CON MARCA DE AGUA
-        # Este bloque va ANTES de st.stop(), porque la pantalla de selección
-        # se detiene aquí y no ejecuta los ajustes finales del tablero.
-        # ============================================================
+        df_inicio = df[
+            df["Unidad de Negocio"].astype(str).str.strip() == str(unidad_inicio).strip()
+        ].copy()
+        unidad_inicio_norm = normalizar_texto_tc(unidad_inicio)
+        es_inicio_latam = "LATAM" in unidad_inicio_norm
+
+        opciones_moneda_inicio = (
+            ["Moneda local", "Pesos mexicanos"]
+            if es_inicio_latam
+            else ["Moneda local"]
+        )
+        if st.session_state.get("inicio_moneda") not in opciones_moneda_inicio:
+            st.session_state["inicio_moneda"] = "Moneda local"
+
+        paises_inicio = []
+        if "País" in df_inicio.columns:
+            paises_inicio = sorted(
+                df_inicio["País"].dropna().astype(str).str.strip().unique().tolist()
+            )
+
+        modo_moneda_inicio = st.session_state.get("inicio_moneda", "Moneda local")
+        if es_inicio_latam and modo_moneda_inicio == "Moneda local":
+            opciones_pais_inicio = paises_inicio or ["Sin datos"]
+            pais_default_inicio = (
+                "Guatemala"
+                if "Guatemala" in opciones_pais_inicio
+                else opciones_pais_inicio[0]
+            )
+        else:
+            opciones_pais_inicio = ["Todos"] + paises_inicio
+            pais_default_inicio = (
+                paises_inicio[0]
+                if not es_inicio_latam and len(paises_inicio) == 1
+                else "Todos"
+            )
+        if st.session_state.get("inicio_pais") not in opciones_pais_inicio:
+            st.session_state["inicio_pais"] = pais_default_inicio
+
+        pais_inicio_estado = st.session_state.get("inicio_pais", pais_default_inicio)
+        df_marcas_inicio = df_inicio
+        if (
+            pais_inicio_estado not in ["Todos", "Sin datos"]
+            and "País" in df_marcas_inicio.columns
+        ):
+            df_marcas_inicio = df_marcas_inicio[
+                df_marcas_inicio["País"].astype(str).str.strip()
+                == str(pais_inicio_estado).strip()
+            ]
+        marcas_inicio = []
+        if "Marca" in df_marcas_inicio.columns:
+            marcas_inicio = sorted(
+                df_marcas_inicio["Marca"].dropna().astype(str).str.strip().unique().tolist()
+            )
+        opciones_marca_inicio = ["Todos"] + marcas_inicio
+        if st.session_state.get("inicio_marca") not in opciones_marca_inicio:
+            st.session_state["inicio_marca"] = "Todos"
+
+        semanas_inicio = sorted(
+            int(semana)
+            for semana in df_inicio["Semana del año"].dropna().unique()
+        )
+        rango_inicio_default = (
+            semanas_inicio[-8] if len(semanas_inicio) >= 8 else semanas_inicio[0],
+            semanas_inicio[-1],
+        )
+        rango_inicio_estado = st.session_state.get("inicio_rango_semanas")
+        if not (
+            isinstance(rango_inicio_estado, (list, tuple))
+            and len(rango_inicio_estado) == 2
+            and rango_inicio_estado[0] in semanas_inicio
+            and rango_inicio_estado[1] in semanas_inicio
+            and rango_inicio_estado[0] <= rango_inicio_estado[1]
+        ):
+            st.session_state.pop("inicio_rango_semanas", None)
+
+        st.markdown(
+            '<div class="inicio-section-title inicio-filtros-title">2. Configura la vista inicial</div>',
+            unsafe_allow_html=True,
+        )
+        col_pais_inicio, col_marca_inicio, col_moneda_inicio, col_semana_inicio = st.columns(4)
+
+        with col_pais_inicio:
+            pais_inicio = st.selectbox(
+                "País",
+                options=opciones_pais_inicio,
+                key="inicio_pais",
+            )
+        with col_marca_inicio:
+            marca_inicio = st.selectbox(
+                "Marca",
+                options=opciones_marca_inicio,
+                key="inicio_marca",
+            )
+        with col_moneda_inicio:
+            moneda_inicio = st.selectbox(
+                "Moneda",
+                options=opciones_moneda_inicio,
+                key="inicio_moneda",
+            )
+        with col_semana_inicio:
+            rango_inicio = st.select_slider(
+                "Rango de semanas",
+                options=semanas_inicio,
+                value=rango_inicio_default,
+                format_func=lambda semana: f"S{int(semana)}",
+                key="inicio_rango_semanas",
+            )
+
+        ruta_calendario_presico = CARPETA_APP / "CALENDARIO PRESICO.png"
+        with st.expander("📅 Ver calendario Présico 2026 · aplica a México y LATAM"):
+            if ruta_calendario_presico.exists():
+                st.image(str(ruta_calendario_presico), use_container_width=True)
+                st.caption(
+                    "Referencia común para interpretar semanas, cierres mensuales, días festivos y fechas especiales."
+                )
+            else:
+                st.info(
+                    "Agrega CALENDARIO PRESICO.png en la misma carpeta de app.py para mostrar esta referencia."
+                )
+
+        col_entrar_izq, col_entrar, col_entrar_der = st.columns([1.2, 1, 1.2])
+        with col_entrar:
+            if st.button(
+                "Ver resumen semanal  →",
+                key="btn_entrar_desde_inicio",
+                type="primary",
+                use_container_width=True,
+            ):
+                st.session_state["unidad_negocio_app"] = unidad_inicio
+                st.session_state["filtro_superior_País"] = pais_inicio
+                st.session_state["filtro_superior_Marca"] = marca_inicio
+                st.session_state["modo_moneda_superior"] = moneda_inicio
+                st.session_state["rango_semanas_evolucion_input_v3"] = tuple(rango_inicio)
+                st.session_state["rango_semanas_evolucion_aplicado_v3"] = tuple(rango_inicio)
+                st.rerun()
+
+        # Modo claro forzado para que la portada conserve la identidad visual
+        # aun cuando el navegador o Streamlit estén configurados en tema oscuro.
         ruta_landing_marca_agua = buscar_imagen_fondo(NOMBRE_IMAGEN_FONDO)
+        landing_background = ""
         if ruta_landing_marca_agua is not None:
             landing_fondo_base64 = imagen_a_base64(str(ruta_landing_marca_agua))
-            st.markdown(
-                f"""
-                <style>
-                html,
-                body,
-                .stApp,
-                [data-testid="stAppViewContainer"] {{
-                    color-scheme: light !important;
-                    background-color: #ffffff !important;
-                }}
+            landing_background = f'''
+                background-image:
+                    linear-gradient(rgba(248,250,252,0.94), rgba(248,250,252,0.98)),
+                    url("data:image/png;base64,{landing_fondo_base64}") !important;
+            '''
 
-                .stApp,
-                [data-testid="stAppViewContainer"] {{
-                    background-image:
-                        linear-gradient(rgba(255,255,255,0.84), rgba(255,255,255,0.92)),
-                        url("data:image/png;base64,{landing_fondo_base64}") !important;
-                    background-size: cover !important;
-                    background-position: top center !important;
-                    background-repeat: no-repeat !important;
-                    background-attachment: fixed !important;
-                    background-color: #ffffff !important;
-                }}
-
-                .main .block-container {{
-                    background: rgba(255,255,255,0.90) !important;
-                    color: #111827 !important;
-                    border: 1px solid rgba(226,232,240,0.95) !important;
-                    box-shadow: 0 14px 40px rgba(15, 23, 42, 0.12) !important;
-                }}
-
-                .landing-title,
-                .unidad-name {{
-                    color: #082567 !important;
-                    -webkit-text-fill-color: #082567 !important;
-                    text-shadow: none !important;
-                    opacity: 1 !important;
-                }}
-
-                .landing-subtitle,
-                .unidad-help {{
-                    color: #334155 !important;
-                    -webkit-text-fill-color: #334155 !important;
-                    text-shadow: none !important;
-                    opacity: 1 !important;
-                }}
-
-                .unidad-card {{
-                    background: rgba(255,255,255,0.96) !important;
-                    color: #111827 !important;
-                    border: 1px solid rgba(226,232,240,0.95) !important;
-                    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12) !important;
-                }}
-
-                div.stButton > button,
-                div.stButton > button * {{
-                    background: #082567 !important;
-                    color: #ffffff !important;
-                    -webkit-text-fill-color: #ffffff !important;
-                    border-color: #082567 !important;
-                    opacity: 1 !important;
-                }}
-
-                @media (prefers-color-scheme: dark) {{
-                    html,
-                    body,
-                    .stApp,
-                    [data-testid="stAppViewContainer"] {{
-                        color-scheme: light !important;
-                        background-color: #ffffff !important;
-                    }}
-
-                    .stApp,
-                    [data-testid="stAppViewContainer"] {{
-                        background-image:
-                            linear-gradient(rgba(255,255,255,0.84), rgba(255,255,255,0.92)),
-                            url("data:image/png;base64,{landing_fondo_base64}") !important;
-                        background-size: cover !important;
-                        background-position: top center !important;
-                        background-repeat: no-repeat !important;
-                        background-attachment: fixed !important;
-                        background-color: #ffffff !important;
-                    }}
-
-                    .main .block-container,
-                    .unidad-card {{
-                        background: rgba(255,255,255,0.96) !important;
-                        color: #111827 !important;
-                        border-color: rgba(226,232,240,0.95) !important;
-                        box-shadow: 0 14px 34px rgba(15, 23, 42, 0.12) !important;
-                    }}
-
-                    .landing-title,
-                    .unidad-name {{
-                        color: #082567 !important;
-                        -webkit-text-fill-color: #082567 !important;
-                        text-shadow: none !important;
-                    }}
-
-                    .landing-subtitle,
-                    .unidad-help {{
-                        color: #334155 !important;
-                        -webkit-text-fill-color: #334155 !important;
-                        text-shadow: none !important;
-                    }}
-                }}
-                </style>
-                """,
-                unsafe_allow_html=True
-            )
+        st.markdown(
+            f"""
+            <style>
+            html, body, .stApp, [data-testid="stAppViewContainer"] {{
+                color-scheme: light !important;
+                background-color: #f8fafc !important;
+            }}
+            .stApp, [data-testid="stAppViewContainer"] {{
+                {landing_background}
+                background-size: cover !important;
+                background-position: top center !important;
+                background-repeat: no-repeat !important;
+                background-attachment: fixed !important;
+            }}
+            .main .block-container {{
+                max-width: 1280px !important;
+                padding-top: 2rem !important;
+                padding-bottom: 3rem !important;
+                background: transparent !important;
+                border: 0 !important;
+                box-shadow: none !important;
+            }}
+            .inicio-hero {{ text-align:center; padding: 8px 12px 12px; }}
+            .inicio-kicker {{
+                color:#d48a24; font-size:13px; font-weight:900;
+                letter-spacing:2.2px; margin-bottom:8px;
+            }}
+            .inicio-title {{
+                color:#082567; font-size:42px; line-height:1.08;
+                font-weight:950; letter-spacing:-1px;
+            }}
+            .inicio-subtitle {{
+                color:#475569; font-size:17px; font-weight:600; margin-top:10px;
+            }}
+            .inicio-stepper {{
+                display:flex; align-items:center; justify-content:center;
+                max-width:820px; margin:18px auto 28px;
+            }}
+            .inicio-step {{
+                min-width:150px; display:flex; flex-direction:column;
+                align-items:center; gap:6px; color:#94a3b8; font-size:12px;
+            }}
+            .inicio-step span {{
+                width:34px; height:34px; border-radius:50%; display:flex;
+                align-items:center; justify-content:center; background:#e2e8f0;
+                color:#64748b; font-weight:900;
+            }}
+            .inicio-step.activo {{ color:#082567; }}
+            .inicio-step.activo span {{ background:#082567; color:#ffffff; }}
+            .inicio-linea {{ height:3px; background:#dbe3ee; flex:1; margin-bottom:23px; }}
+            .inicio-section-title {{
+                color:#082567; font-size:19px; font-weight:900; margin:4px 0 12px;
+            }}
+            .mapa-card {{
+                position:relative; background:rgba(255,255,255,0.98);
+                border:2px solid #e2e8f0; border-radius:24px;
+                padding:14px 20px 18px; min-height:300px; text-align:center;
+                box-shadow:0 12px 32px rgba(15,23,42,0.08);
+                transition:transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+            }}
+            .mapa-card.seleccionada {{
+                border-color:#d99932;
+                box-shadow:0 14px 36px rgba(8,37,103,0.15), 0 0 0 3px rgba(217,153,50,0.13);
+            }}
+            .mapa-check {{
+                position:absolute; right:16px; top:14px; width:30px; height:30px;
+                display:flex; align-items:center; justify-content:center;
+                border-radius:50%; background:#d99932; color:#ffffff;
+                font-weight:950; font-size:18px; z-index:5;
+            }}
+            .mapa-card:not(.seleccionada) .mapa-check {{ background:transparent; }}
+            .mapa-visual {{
+                position:relative; height:210px; display:flex;
+                align-items:center; justify-content:center; overflow:hidden;
+            }}
+            .mapa-silueta {{
+                width:100%; height:100%; object-fit:contain; display:block;
+                filter:drop-shadow(0 10px 10px rgba(15,23,42,0.12));
+            }}
+            .mapa-latam {{ transform:scale(.90); }}
+            .mapa-logo-contenedor {{
+                position:absolute; inset:0; display:flex; align-items:center;
+                justify-content:center; pointer-events:none;
+            }}
+            .mapa-logo-overlay {{
+                width:155px; height:74px; object-fit:contain; display:block;
+                background:rgba(255,255,255,.90); border-radius:14px;
+                padding:7px 11px; box-shadow:0 6px 18px rgba(15,23,42,.14);
+            }}
+            .mapa-logo-latam {{ width:145px; height:82px; }}
+            .mapa-logo-contenedor .unidad-logo-placeholder {{
+                width:120px; height:72px; margin:0; border-radius:14px;
+                background:rgba(255,255,255,.92); font-size:38px;
+            }}
+            .mapa-card-title {{ color:#082567; font-size:22px; font-weight:950; margin-top:2px; }}
+            .mapa-card-subtitle {{ color:#64748b; font-size:14px; font-weight:650; margin-top:2px; }}
+            .inicio-filtros-title {{ margin-top:26px; }}
+            div.stButton > button {{ border-radius:12px !important; font-weight:850 !important; }}
+            div.stButton > button[kind="primary"] {{
+                background:#082567 !important; color:#ffffff !important;
+                border-color:#082567 !important; min-height:48px;
+            }}
+            [data-testid="stExpander"] {{
+                background:rgba(255,255,255,.96); border:1px solid #e2e8f0;
+                border-radius:14px; margin-top:12px;
+            }}
+            @media (max-width: 800px) {{
+                .inicio-title {{ font-size:30px; }}
+                .inicio-step b {{ display:none; }}
+                .inicio-step {{ min-width:45px; }}
+                .inicio-linea {{ margin-bottom:0; }}
+                .mapa-card {{ min-height:255px; }}
+                .mapa-visual {{ height:170px; }}
+            }}
+            </style>
+            """,
+            unsafe_allow_html=True,
+        )
 
         st.stop()
 
