@@ -5836,34 +5836,39 @@ if modulo_seleccionado == "Cartera":
                 int(semana)
                 for semana in df_filtrado["Semana del año"].dropna().unique()
             )
-            rango_semanas_default = (
-                semanas_evolucion[0],
-                semanas_evolucion[-1],
-            )
+            # Limpia el estado del control deslizante de la versión anterior.
+            # Dos selectores generan un solo rerun por cambio y son más estables
+            # con bases grandes en Streamlit Cloud.
+            st.session_state.pop("rango_semanas_evolucion", None)
 
-            rango_guardado = st.session_state.get("rango_semanas_evolucion")
-            rango_guardado_valido = (
-                isinstance(rango_guardado, (list, tuple))
-                and len(rango_guardado) == 2
-                and rango_guardado[0] in semanas_evolucion
-                and rango_guardado[1] in semanas_evolucion
-            )
-            if not rango_guardado_valido:
-                st.session_state.pop("rango_semanas_evolucion", None)
+            if st.session_state.get("semana_inicio_evolucion") not in semanas_evolucion:
+                st.session_state.pop("semana_inicio_evolucion", None)
 
             with col_menu:
-                if len(semanas_evolucion) > 1:
-                    semana_inicio_evolucion, semana_fin_evolucion = st.select_slider(
-                        "Rango de semanas",
-                        options=semanas_evolucion,
-                        value=rango_semanas_default,
-                        format_func=lambda semana: f"S{int(semana)}",
-                        key="rango_semanas_evolucion",
-                    )
-                else:
-                    semana_inicio_evolucion = semanas_evolucion[0]
-                    semana_fin_evolucion = semanas_evolucion[0]
-                    st.caption(f"Semana: S{semana_inicio_evolucion}")
+                st.markdown("**Rango de semanas**")
+                semana_inicio_evolucion = st.selectbox(
+                    "Semana inicial",
+                    options=semanas_evolucion,
+                    index=0,
+                    format_func=lambda semana: f"S{int(semana)}",
+                    key="semana_inicio_evolucion",
+                )
+
+                semanas_fin_evolucion = [
+                    semana
+                    for semana in semanas_evolucion
+                    if semana >= semana_inicio_evolucion
+                ]
+                if st.session_state.get("semana_fin_evolucion") not in semanas_fin_evolucion:
+                    st.session_state.pop("semana_fin_evolucion", None)
+
+                semana_fin_evolucion = st.selectbox(
+                    "Semana final",
+                    options=semanas_fin_evolucion,
+                    index=len(semanas_fin_evolucion) - 1,
+                    format_func=lambda semana: f"S{int(semana)}",
+                    key="semana_fin_evolucion",
+                )
 
                 indicador_grafica = st.selectbox(
                     "Indicador",
